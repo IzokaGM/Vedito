@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.vedito.app.R
+import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
 import com.vedito.app.databinding.ActivityHomeBinding
@@ -50,11 +51,17 @@ class HomeActivity : ComponentActivity() {
     private fun createProject(uri: Uri) {
         persistReadAccess(uri)
         val now = System.currentTimeMillis()
+        val displayName = resolveDisplayName(uri)
+        val asset = MediaAsset(
+            id = UUID.randomUUID().toString(),
+            uri = uri.toString(),
+            displayName = displayName
+        )
         val project = Project(
             id = UUID.randomUUID().toString(),
-            title = resolveDisplayName(uri).substringBeforeLast('.').ifBlank { "Untitled edit" },
-            sourceUri = uri.toString(),
-            updatedAt = now
+            title = displayName.substringBeforeLast('.').ifBlank { "Untitled edit" },
+            updatedAt = now,
+            assets = listOf(asset)
         )
         projects.save(project)
         openEditor(project.id)
@@ -67,9 +74,10 @@ class HomeActivity : ComponentActivity() {
 
         recent.forEach { project ->
             val row = LayoutInflater.from(this).inflate(R.layout.item_recent_project, binding.recentList, false)
+            val clipCount = project.clips.size.coerceAtLeast(project.assets.size)
             row.findViewById<TextView>(R.id.projectName).text = project.title
             row.findViewById<TextView>(R.id.projectMeta).text =
-                "Video edit · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
+                "$clipCount clip${if (clipCount == 1) "" else "s"} · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
             row.setOnClickListener { openEditor(project.id) }
             binding.recentList.addView(row)
         }

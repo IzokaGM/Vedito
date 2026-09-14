@@ -17,7 +17,7 @@ class PreviewPlayer(
 ) : TextureView.SurfaceTextureListener {
 
     interface Listener {
-        fun onReady(durationMs: Int)
+        fun onReady(uri: Uri, durationMs: Int)
         fun onProgress(positionMs: Int, durationMs: Int, isPlaying: Boolean)
         fun onPlaybackStateChanged(isPlaying: Boolean)
         fun onError(message: String)
@@ -29,12 +29,22 @@ class PreviewPlayer(
     private var durationMs: Int = 0
     private var videoWidth: Int = 0
     private var videoHeight: Int = 0
+    private var prepared = false
     private var pendingPlayAfterSeek = false
+    private var pendingStartPositionMs = 0
+    private var pendingAutoPlay = false
+    private var loadGeneration = 0
+
+    val currentUri: Uri?
+        get() = mediaUri
+
+    val isReady: Boolean
+        get() = prepared && player != null
 
     private val ticker = object : Runnable {
         override fun run() {
             val active = player
-            if (active != null) {
+            if (active != null && prepared) {
                 listener.onProgress(active.currentPosition.coerceAtLeast(0), durationMs, active.isPlaying)
             }
             mainHandler.postDelayed(this, 60L)
@@ -46,15 +56,25 @@ class PreviewPlayer(
         mainHandler.post(ticker)
     }
 
-    fun load(uri: Uri) {
+    fun load(uri: Uri, startPositionMs: Int = 0, playWhenReady: Boolean = false) {
+        pendingStartPositionMs = startPositionMs.coerceAtLeast(0)
+        pendingAutoPlay = playWhenReady
+
+        if (mediaUri == uri && isReady) {
+            if (playWhenReady) playFrom(pendingStartPositionMs) else seekTo(pendingStartPositionMs)
+            return
+        }
+
         mediaUri = uri
+        prepared = false
         if (textureView.isAvailable) prepare(uri)
     }
 
-    fun isPlaying(): Boolean = player?.isPlaying == true
+    fun isPlaying(): Boolean = player?.let { prepared && it.isPlaying } == true
 
     fun playFrom(positionMs: Int) {
         val active = player ?: return
+        if (!prepared) return
         val target = positionMs.coerceIn(0, max(0, durationMs))
         pendingPlayAfterSeek = true
         active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
@@ -62,22 +82,26 @@ class PreviewPlayer(
 
     fun pause() {
         pendingPlayAfterSeek = false
+        pendingAutoPlay = false
         val active = player ?: return
-        if (active.isPlaying) active.pause()
+        if (prepared && active.isPlaying) active.pause()
         listener.onPlaybackStateChanged(false)
     }
 
     fun seekTo(positionMs: Int) {
         pendingPlayAfterSeek = false
         val active = player ?: return
+        if (!prepared) return
         val target = positionMs.coerceIn(0, max(0, durationMs))
         active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
     }
 
     fun release() {
+        loadGeneration++
         mainHandler.removeCallbacks(ticker)
         player?.release()
         player = null
+        prepared = false
     }
 
     override fun onSurfaceTextureAvailable(surfaceTexture: android.graphics.SurfaceTexture, width: Int, height: Int) {
@@ -96,8 +120,10 @@ class PreviewPlayer(
     override fun onSurfaceTextureUpdated(surfaceTexture: android.graphics.SurfaceTexture) = Unit
 
     private fun prepare(uri: Uri) {
+        val generation = ++loadGeneration
         player?.release()
         player = null
+        prepared = false
 
         val surfaceTexture = textureView.surfaceTexture ?: return
         val surface = Surface(surfaceTexture)
@@ -107,19 +133,31 @@ class PreviewPlayer(
                 setDataSource(context, uri)
                 setSurface(surface)
                 setOnPreparedListener { ready ->
+                    if (generation != loadGeneration || mediaUri != uri) return@setOnPreparedListener
+                    prepared = true
                     durationMs = max(0, ready.duration)
                     this@PreviewPlayer.videoWidth = ready.videoWidth
                     this@PreviewPlayer.videoHeight = ready.videoHeight
                     applyVideoTransform(textureView.width, textureView.height)
-                    listener.onReady(durationMs)
+                    listener.onReady(uri, durationMs)
                     listener.onPlaybackStateChanged(false)
+
+                    val target = pendingStartPositionMs.coerceIn(0, durationMs)
+                    if (pendingAutoPlay) {
+                        pendingAutoPlay = false
+                        playFrom(target)
+                    } else {
+                        seekTo(target)
+                    }
                 }
                 setOnVideoSizeChangedListener { _, width, height ->
+                    if (generation != loadGeneration) return@setOnVideoSizeChangedListener
                     this@PreviewPlayer.videoWidth = width
                     this@PreviewPlayer.videoHeight = height
                     applyVideoTransform(textureView.width, textureView.height)
                 }
                 setOnSeekCompleteListener { ready ->
+                    if (generation != loadGeneration) return@setOnSeekCompleteListener
                     if (pendingPlayAfterSeek) {
                         pendingPlayAfterSeek = false
                         ready.start()
@@ -127,18 +165,22 @@ class PreviewPlayer(
                     }
                 }
                 setOnCompletionListener {
+                    if (generation != loadGeneration) return@setOnCompletionListener
                     pendingPlayAfterSeek = false
                     listener.onPlaybackStateChanged(false)
                     listener.onProgress(durationMs, durationMs, false)
                 }
                 setOnErrorListener { _, _, _ ->
+                    if (generation != loadGeneration) return@setOnErrorListener true
                     pendingPlayAfterSeek = false
+                    prepared = false
                     listener.onError("This video codec cannot be previewed on this device.")
                     true
                 }
                 prepareAsync()
             }
         } catch (_: Exception) {
+            prepared = false
             listener.onError("Unable to open this video.")
         } finally {
             surface.release()

@@ -6,9 +6,13 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import com.vedito.app.R
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.timeline.TimelineMath
@@ -33,6 +37,7 @@ class TimelineScrubberView @JvmOverloads constructor(
     var onScrubbed: ((Int) -> Unit)? = null
     var onClipSelected: ((String) -> Unit)? = null
     var onTrimChanged: ((clipId: String, sourceStartMs: Int, sourceEndMs: Int, finished: Boolean) -> Unit)? = null
+    var onReorderRequested: ((clipId: String, targetIndex: Int, finished: Boolean) -> Unit)? = null
 
     private val density = resources.displayMetrics.density
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_surface_raised) }
@@ -49,17 +54,31 @@ class TimelineScrubberView @JvmOverloads constructor(
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_accent) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text) }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
     private var clips: List<Clip> = emptyList()
     private var selectedClipId: String? = null
     private var thumbnails: List<Bitmap?> = emptyList()
     private var touchMode = TouchMode.NONE
     private var downX = 0f
+    private var downY = 0f
     private var trimOriginalStart = 0
     private var trimOriginalEnd = 0
     private var trimDurationAtDown = 0
     private var lastTrimStart = 0
     private var lastTrimEnd = 0
+    private var dragClipId: String? = null
+    private var lastReorderTarget = -1
+
+    private val startReorderRunnable = Runnable {
+        if (touchMode != TouchMode.PENDING || clips.size < 2) return@Runnable
+        val id = dragClipId ?: return@Runnable
+        if (clips.none { it.id == id }) return@Runnable
+        touchMode = TouchMode.REORDER
+        lastReorderTarget = clips.indexOfFirst { it.id == id }
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
 
     fun setClips(value: List<Clip>, selectedId: String?) {
         clips = value.toList()
@@ -77,6 +96,7 @@ class TimelineScrubberView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
+        mainHandler.removeCallbacks(startReorderRunnable)
         thumbnails.filterNotNull().forEach { if (!it.isRecycled) it.recycle() }
         thumbnails = emptyList()
         super.onDetachedFromWindow()
@@ -96,8 +116,10 @@ class TimelineScrubberView @JvmOverloads constructor(
 
         selectedClipBounds(body)?.let { selected ->
             canvas.drawRoundRect(selected, 8f * density, 8f * density, selectedPaint)
-            drawTrimHandle(canvas, selected.left, body)
-            drawTrimHandle(canvas, selected.right, body)
+            if (touchMode != TouchMode.REORDER) {
+                drawTrimHandle(canvas, selected.left, body)
+                drawTrimHandle(canvas, selected.right, body)
+            }
         }
 
         if (durationMs > 0) {
@@ -110,13 +132,24 @@ class TimelineScrubberView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (clips.isEmpty() || durationMs <= 0) return false
         val body = timelineRect()
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
+                mainHandler.removeCallbacks(startReorderRunnable)
                 downX = event.x
+                downY = event.y
+
+                val touchedId = clipIdForX(event.x, body)
+                if (touchedId != null && touchedId != selectedClipId) {
+                    selectedClipId = touchedId
+                    onClipSelected?.invoke(touchedId)
+                }
+
                 val selectedBounds = selectedClipBounds(body)
                 val handleHit = 18f * density
                 val selectedClip = clips.firstOrNull { it.id == selectedClipId }
+                dragClipId = selectedClip?.id
 
                 touchMode = when {
                     selectedBounds != null && selectedClip != null && abs(event.x - selectedBounds.left) <= handleHit -> {
@@ -127,32 +160,50 @@ class TimelineScrubberView @JvmOverloads constructor(
                         beginTrim(selectedClip)
                         TouchMode.TRIM_RIGHT
                     }
-                    else -> TouchMode.SCRUB
+                    else -> {
+                        mainHandler.postDelayed(startReorderRunnable, LONG_PRESS_MS)
+                        TouchMode.PENDING
+                    }
                 }
-
-                if (touchMode == TouchMode.SCRUB) updateScrub(event.x, body)
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
                 when (touchMode) {
+                    TouchMode.PENDING -> {
+                        val moved = abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop
+                        if (moved) {
+                            mainHandler.removeCallbacks(startReorderRunnable)
+                            touchMode = TouchMode.SCRUB
+                            updateScrub(event.x, body)
+                        }
+                    }
                     TouchMode.SCRUB -> updateScrub(event.x, body)
                     TouchMode.TRIM_LEFT, TouchMode.TRIM_RIGHT -> updateTrim(event.x, finished = false)
+                    TouchMode.REORDER -> updateReorder(event.x, body, finished = false)
                     TouchMode.NONE -> Unit
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                mainHandler.removeCallbacks(startReorderRunnable)
                 when (touchMode) {
+                    TouchMode.PENDING -> {
+                        updateScrub(event.x, body)
+                        onSeekFinished?.invoke(positionMs)
+                    }
                     TouchMode.SCRUB -> {
                         updateScrub(event.x, body)
                         onSeekFinished?.invoke(positionMs)
                     }
                     TouchMode.TRIM_LEFT, TouchMode.TRIM_RIGHT -> updateTrim(event.x, finished = true)
+                    TouchMode.REORDER -> updateReorder(event.x, body, finished = true)
                     TouchMode.NONE -> Unit
                 }
                 touchMode = TouchMode.NONE
+                dragClipId = null
+                lastReorderTarget = -1
                 parent?.requestDisallowInterceptTouchEvent(false)
                 return true
             }
@@ -194,6 +245,15 @@ class TimelineScrubberView @JvmOverloads constructor(
             }
         }
         onScrubbed?.invoke(next)
+    }
+
+    private fun updateReorder(x: Float, body: RectF, finished: Boolean) {
+        val id = dragClipId ?: return
+        val target = clipIndexForX(x, body)
+        if (target != lastReorderTarget || finished) {
+            onReorderRequested?.invoke(id, target, finished)
+            lastReorderTarget = target
+        }
     }
 
     private fun drawThumbnails(canvas: Canvas, body: RectF) {
@@ -259,6 +319,12 @@ class TimelineScrubberView @JvmOverloads constructor(
         return null
     }
 
+    private fun clipIdForX(x: Float, body: RectF): String? =
+        TimelineMath.locate(clips, timeForX(x, body))?.clip?.id
+
+    private fun clipIndexForX(x: Float, body: RectF): Int =
+        TimelineMath.locate(clips, timeForX(x, body))?.clipIndex ?: clips.lastIndex.coerceAtLeast(0)
+
     private fun timelineRect(): RectF {
         val horizontal = 12f * density
         val vertical = 16f * density
@@ -294,9 +360,10 @@ class TimelineScrubberView @JvmOverloads constructor(
         }
     }
 
-    private enum class TouchMode { NONE, SCRUB, TRIM_LEFT, TRIM_RIGHT }
+    private enum class TouchMode { NONE, PENDING, SCRUB, TRIM_LEFT, TRIM_RIGHT, REORDER }
 
     companion object {
         private const val MIN_CLIP_MS = 300
+        private const val LONG_PRESS_MS = 360L
     }
 }

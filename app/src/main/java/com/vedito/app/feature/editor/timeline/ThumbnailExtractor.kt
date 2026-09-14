@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.timeline.TimelineMath
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -20,35 +21,52 @@ class ThumbnailExtractor(context: Context) {
     private val targetHeight = (68f * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(68)
 
     fun request(
-        uri: Uri,
+        assets: List<MediaAsset>,
         clips: List<Clip>,
-        frameCount: Int = 10,
+        frameCount: Int = 12,
         callback: (List<Bitmap?>) -> Unit
     ) {
         val requestId = generation.incrementAndGet()
+        val assetMap = assets.associateBy { it.id }
         val clipSnapshot = clips.toList()
+
         executor.execute {
-            val retriever = MediaMetadataRetriever()
             val frames = mutableListOf<Bitmap?>()
+            var retriever: MediaMetadataRetriever? = null
+            var loadedAssetId: String? = null
+
             try {
-                retriever.setDataSource(appContext, uri)
                 val total = TimelineMath.totalDurationMs(clipSnapshot)
-                val count = frameCount.coerceIn(4, 14)
+                val count = frameCount.coerceIn(4, 16)
                 repeat(count) { index ->
                     val fraction = (index + 0.5f) / count
                     val timelineMs = (total * fraction).roundToInt().coerceIn(0, total)
                     val location = TimelineMath.locate(clipSnapshot, timelineMs)
-                    val sourceMs = location?.sourcePositionMs ?: 0
-                    val raw = retriever.getFrameAtTime(
-                        sourceMs * 1_000L,
+                    val asset = location?.clip?.assetId?.let(assetMap::get)
+                    if (location == null || asset == null) {
+                        frames += null
+                        return@repeat
+                    }
+
+                    if (loadedAssetId != asset.id) {
+                        runCatching { retriever?.release() }
+                        retriever = MediaMetadataRetriever().apply {
+                            setDataSource(appContext, Uri.parse(asset.uri))
+                        }
+                        loadedAssetId = asset.id
+                    }
+
+                    val raw = retriever?.getFrameAtTime(
+                        location.sourcePositionMs * 1_000L,
                         MediaMetadataRetriever.OPTION_CLOSEST_SYNC
                     )
                     frames += raw?.let(::scaleDown)
                 }
             } catch (_: Exception) {
-                while (frames.size < frameCount.coerceIn(4, 14)) frames += null
+                val wanted = frameCount.coerceIn(4, 16)
+                while (frames.size < wanted) frames += null
             } finally {
-                runCatching { retriever.release() }
+                runCatching { retriever?.release() }
             }
 
             if (requestId != generation.get()) {

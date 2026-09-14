@@ -1,6 +1,7 @@
 package com.vedito.app.core.timeline
 
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.MediaAsset
 
 object TimelineMath {
     data class Location(
@@ -46,11 +47,16 @@ object TimelineMath {
         return 0
     }
 
-    fun sanitized(clips: List<Clip>, sourceDurationMs: Int): List<Clip> {
-        if (sourceDurationMs <= 0) return clips.filter { it.durationMs > 0 }
+    fun sanitized(clips: List<Clip>, assets: List<MediaAsset>): List<Clip> {
+        val assetsById = assets.associateBy { it.id }
         return clips.mapNotNull { clip ->
-            val start = clip.sourceStartMs.coerceIn(0, sourceDurationMs)
-            val end = clip.sourceEndMs.coerceIn(start, sourceDurationMs)
+            val asset = assetsById[clip.assetId] ?: return@mapNotNull null
+            val duration = asset.durationMs
+            if (duration <= 0) {
+                return@mapNotNull clip.takeIf { it.durationMs > 0 }
+            }
+            val start = clip.sourceStartMs.coerceIn(0, duration)
+            val end = clip.sourceEndMs.coerceIn(start, duration)
             if (end > start) clip.copy(sourceStartMs = start, sourceEndMs = end) else null
         }
     }

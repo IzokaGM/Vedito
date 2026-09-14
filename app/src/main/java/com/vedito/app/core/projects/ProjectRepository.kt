@@ -2,6 +2,7 @@ package com.vedito.app.core.projects
 
 import android.content.Context
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,32 +16,7 @@ class ProjectRepository(context: Context) {
             val array = JSONArray(raw)
             buildList {
                 for (index in 0 until array.length()) {
-                    val item = array.getJSONObject(index)
-                    val clips = buildList {
-                        val clipArray = item.optJSONArray("clips") ?: JSONArray()
-                        for (clipIndex in 0 until clipArray.length()) {
-                            val clip = clipArray.getJSONObject(clipIndex)
-                            add(
-                                Clip(
-                                    id = clip.getString("id"),
-                                    sourceStartMs = clip.optInt("sourceStartMs", 0),
-                                    sourceEndMs = clip.optInt("sourceEndMs", 0)
-                                )
-                            )
-                        }
-                    }
-                    add(
-                        Project(
-                            id = item.getString("id"),
-                            title = item.getString("title"),
-                            sourceUri = item.getString("sourceUri"),
-                            updatedAt = item.getLong("updatedAt"),
-                            sourceDurationMs = item.optInt("sourceDurationMs", 0),
-                            clips = clips,
-                            playheadMs = item.optInt("playheadMs", 0),
-                            selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() }
-                        )
-                    )
+                    parseProject(array.getJSONObject(index))?.let(::add)
                 }
             }.sortedByDescending { it.updatedAt }
         }.getOrDefault(emptyList())
@@ -56,34 +32,120 @@ class ProjectRepository(context: Context) {
             .take(MAX_PROJECTS)
 
         val array = JSONArray()
-        projects.forEach { item ->
-            val clipArray = JSONArray()
-            item.clips.forEach { clip ->
-                clipArray.put(
-                    JSONObject()
-                        .put("id", clip.id)
-                        .put("sourceStartMs", clip.sourceStartMs)
-                        .put("sourceEndMs", clip.sourceEndMs)
+        projects.forEach { item -> array.put(toJson(item)) }
+        preferences.edit().putString(KEY_PROJECTS, array.toString()).apply()
+    }
+
+    private fun parseProject(item: JSONObject): Project? {
+        val id = item.optString("id")
+        if (id.isBlank()) return null
+
+        val assets = parseAssets(item)
+        val clips = parseClips(item, assets, id)
+
+        return Project(
+            id = id,
+            title = item.optString("title").ifBlank { "Untitled edit" },
+            updatedAt = item.optLong("updatedAt", System.currentTimeMillis()),
+            assets = assets,
+            clips = clips,
+            playheadMs = item.optInt("playheadMs", 0),
+            selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun parseAssets(item: JSONObject): List<MediaAsset> {
+        val assetArray = item.optJSONArray("assets")
+        if (assetArray != null && assetArray.length() > 0) {
+            return buildList {
+                for (index in 0 until assetArray.length()) {
+                    val asset = assetArray.optJSONObject(index) ?: continue
+                    val assetId = asset.optString("id")
+                    val uri = asset.optString("uri")
+                    if (assetId.isBlank() || uri.isBlank()) continue
+                    add(
+                        MediaAsset(
+                            id = assetId,
+                            uri = uri,
+                            displayName = asset.optString("displayName").ifBlank { "Video" },
+                            durationMs = asset.optInt("durationMs", 0)
+                        )
+                    )
+                }
+            }
+        }
+
+        // Migration path for Patch 03 and earlier projects.
+        val legacyUri = item.optString("sourceUri")
+        if (legacyUri.isBlank()) return emptyList()
+        return listOf(
+            MediaAsset(
+                id = "legacy-${item.optString("id")}",
+                uri = legacyUri,
+                displayName = item.optString("title").ifBlank { "Video" },
+                durationMs = item.optInt("sourceDurationMs", 0)
+            )
+        )
+    }
+
+    private fun parseClips(item: JSONObject, assets: List<MediaAsset>, projectId: String): List<Clip> {
+        val clipArray = item.optJSONArray("clips") ?: JSONArray()
+        val fallbackAssetId = assets.firstOrNull()?.id ?: "legacy-$projectId"
+        return buildList {
+            for (index in 0 until clipArray.length()) {
+                val clip = clipArray.optJSONObject(index) ?: continue
+                val clipId = clip.optString("id")
+                if (clipId.isBlank()) continue
+                add(
+                    Clip(
+                        id = clipId,
+                        assetId = clip.optString("assetId").ifBlank { fallbackAssetId },
+                        sourceStartMs = clip.optInt("sourceStartMs", 0),
+                        sourceEndMs = clip.optInt("sourceEndMs", 0)
+                    )
                 )
             }
-            array.put(
+        }
+    }
+
+    private fun toJson(project: Project): JSONObject {
+        val assetArray = JSONArray()
+        project.assets.forEach { asset ->
+            assetArray.put(
                 JSONObject()
-                    .put("id", item.id)
-                    .put("title", item.title)
-                    .put("sourceUri", item.sourceUri)
-                    .put("updatedAt", item.updatedAt)
-                    .put("sourceDurationMs", item.sourceDurationMs)
-                    .put("clips", clipArray)
-                    .put("playheadMs", item.playheadMs)
-                    .put("selectedClipId", item.selectedClipId ?: "")
+                    .put("id", asset.id)
+                    .put("uri", asset.uri)
+                    .put("displayName", asset.displayName)
+                    .put("durationMs", asset.durationMs)
             )
         }
-        preferences.edit().putString(KEY_PROJECTS, array.toString()).apply()
+
+        val clipArray = JSONArray()
+        project.clips.forEach { clip ->
+            clipArray.put(
+                JSONObject()
+                    .put("id", clip.id)
+                    .put("assetId", clip.assetId)
+                    .put("sourceStartMs", clip.sourceStartMs)
+                    .put("sourceEndMs", clip.sourceEndMs)
+            )
+        }
+
+        return JSONObject()
+            .put("schemaVersion", SCHEMA_VERSION)
+            .put("id", project.id)
+            .put("title", project.title)
+            .put("updatedAt", project.updatedAt)
+            .put("assets", assetArray)
+            .put("clips", clipArray)
+            .put("playheadMs", project.playheadMs)
+            .put("selectedClipId", project.selectedClipId ?: "")
     }
 
     companion object {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
+        private const val SCHEMA_VERSION = 4
     }
 }

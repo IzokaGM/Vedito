@@ -1,14 +1,21 @@
 package com.vedito.app.feature.editor
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import com.vedito.app.R
+import com.vedito.app.core.media.MediaProbe
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
+import com.vedito.app.core.timeline.TimelineEditor
 import com.vedito.app.core.timeline.TimelineMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
@@ -22,15 +29,23 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var repository: ProjectRepository
     private lateinit var previewPlayer: PreviewPlayer
     private lateinit var thumbnailExtractor: ThumbnailExtractor
+    private lateinit var mediaProbe: MediaProbe
     private lateinit var project: Project
 
+    private var assets: List<MediaAsset> = emptyList()
     private var clips: List<Clip> = emptyList()
     private var selectedClipId: String? = null
     private var timelinePositionMs: Int = 0
-    private var sourceDurationMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
     private var lastScrubSeekAt = 0L
+    private var addingMedia = false
+
+    private val addVideoPicker = registerForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_VIDEOS)
+    ) { uris ->
+        if (uris.isNotEmpty()) addMedia(uris)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +56,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
         repository = ProjectRepository(this)
         thumbnailExtractor = ThumbnailExtractor(this)
+        mediaProbe = MediaProbe(this)
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)
         val loaded = projectId?.let(repository::find)
@@ -48,18 +64,22 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             finish()
             return
         }
+
         project = loaded
-        clips = project.clips
-        selectedClipId = project.selectedClipId ?: clips.firstOrNull()?.id
-        timelinePositionMs = project.playheadMs.coerceAtLeast(0)
+        assets = project.assets
+        clips = TimelineMath.sanitized(project.clips, assets)
+        selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
+            ?: clips.firstOrNull()?.id
+        timelinePositionMs = project.playheadMs.coerceIn(0, TimelineMath.totalDurationMs(clips))
 
         binding.projectTitle.text = project.title
         binding.backButton.setOnClickListener { finish() }
         binding.playPauseButton.setOnClickListener {
-            if (previewPlayer.isPlaying()) {
-                previewPlayer.pause()
-            } else {
-                startPlaybackFromTimeline()
+            if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
+        }
+        binding.addClipButton.setOnClickListener {
+            if (!addingMedia) {
+                addVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
             }
         }
         binding.splitButton.setOnClickListener { splitAtPlayhead() }
@@ -89,11 +109,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.timeline.onTrimChanged = { clipId, startMs, endMs, finished ->
             applyTrim(clipId, startMs, endMs, finished)
         }
+        binding.timeline.onReorderRequested = { clipId, targetIndex, finished ->
+            reorderClip(clipId, targetIndex, finished)
+        }
 
         previewPlayer = PreviewPlayer(this, binding.previewTexture, this)
-        previewPlayer.load(Uri.parse(project.sourceUri))
-
         renderTimelineState()
+        openInitialPreview()
+        requestThumbnails()
     }
 
     override fun onPause() {
@@ -104,29 +127,41 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     override fun onDestroy() {
         if (::thumbnailExtractor.isInitialized) thumbnailExtractor.release()
+        if (::mediaProbe.isInitialized) mediaProbe.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
 
-    override fun onReady(durationMs: Int) {
-        sourceDurationMs = durationMs.coerceAtLeast(0)
-        clips = TimelineMath.sanitized(clips, sourceDurationMs)
-        if (clips.isEmpty() && sourceDurationMs > 0) {
-            clips = listOf(
-                Clip(
-                    id = UUID.randomUUID().toString(),
-                    sourceStartMs = 0,
-                    sourceEndMs = sourceDurationMs
-                )
-            )
+    override fun onReady(uri: Uri, durationMs: Int) {
+        val index = assets.indexOfFirst { Uri.parse(it.uri) == uri }
+        if (index >= 0 && durationMs > 0 && assets[index].durationMs != durationMs) {
+            assets = assets.toMutableList().apply {
+                this[index] = this[index].copy(durationMs = durationMs)
+            }
         }
+
+        if (clips.isEmpty() && index >= 0 && durationMs > 0) {
+            val asset = assets[index]
+            val first = Clip(
+                id = UUID.randomUUID().toString(),
+                assetId = asset.id,
+                sourceStartMs = 0,
+                sourceEndMs = durationMs
+            )
+            clips = listOf(first)
+            selectedClipId = first.id
+            timelinePositionMs = 0
+        }
+
+        clips = TimelineMath.sanitized(clips, assets)
         if (selectedClipId == null || clips.none { it.id == selectedClipId }) {
             selectedClipId = clips.firstOrNull()?.id
         }
         timelinePositionMs = timelinePositionMs.coerceIn(0, TimelineMath.totalDurationMs(clips))
+
         binding.playerError.visibility = View.GONE
+        binding.playPauseButton.isEnabled = true
         renderTimelineState()
-        seekPreviewToTimeline(timelinePositionMs)
         requestThumbnails()
         saveProject()
     }
@@ -137,6 +172,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val clipIndex = clips.indexOfFirst { it.id == clipId }
         if (clipIndex < 0) return
         val clip = clips[clipIndex]
+        val asset = assetFor(clip) ?: return
+        if (previewPlayer.currentUri != Uri.parse(asset.uri)) return
 
         if (positionMs >= clip.sourceEndMs - END_GUARD_MS) {
             advancePlayback(clipIndex)
@@ -162,6 +199,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.playPauseButton.isEnabled = false
     }
 
+    private fun openInitialPreview() {
+        val location = TimelineMath.locate(clips, timelinePositionMs)
+        if (location != null) {
+            showClip(location.clip, location.sourcePositionMs, play = false)
+            return
+        }
+        assets.firstOrNull()?.let { asset ->
+            binding.playerError.visibility = View.GONE
+            previewPlayer.load(Uri.parse(asset.uri), 0, false)
+        }
+    }
+
     private fun startPlaybackFromTimeline() {
         val total = TimelineMath.totalDurationMs(clips)
         if (total <= 0) return
@@ -170,7 +219,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         playbackClipId = location.clip.id
         selectedClipId = location.clip.id
         updateSelectionUi()
-        previewPlayer.playFrom(location.sourcePositionMs)
+        showClip(location.clip, location.sourcePositionMs, play = true)
     }
 
     private fun advancePlayback(currentIndex: Int) {
@@ -182,37 +231,32 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             saveProject()
             return
         }
+
         playbackClipId = next.id
-        previewPlayer.playFrom(next.sourceStartMs)
+        selectedClipId = next.id
+        setTimelinePosition(TimelineMath.clipStartMs(clips, next.id))
+        showClip(next, next.sourceStartMs, play = true)
     }
 
     private fun seekPreviewToTimeline(positionMs: Int) {
         val location = TimelineMath.locate(clips, positionMs) ?: return
-        previewPlayer.seekTo(location.sourcePositionMs)
+        showClip(location.clip, location.sourcePositionMs, play = false)
+    }
+
+    private fun showClip(clip: Clip, sourcePositionMs: Int, play: Boolean) {
+        val asset = assetFor(clip) ?: return
+        binding.playerError.visibility = View.GONE
+        binding.playPauseButton.isEnabled = true
+        previewPlayer.load(Uri.parse(asset.uri), sourcePositionMs, play)
     }
 
     private fun splitAtPlayhead() {
         previewPlayer.pause()
         playbackClipId = null
-        val location = TimelineMath.locate(clips, timelinePositionMs) ?: return
-        if (location.offsetMs < MIN_SPLIT_EDGE_MS || location.clip.durationMs - location.offsetMs < MIN_SPLIT_EDGE_MS) {
-            return
-        }
-        val splitSource = location.clip.sourceStartMs + location.offsetMs
-        val left = location.clip.copy(
-            id = UUID.randomUUID().toString(),
-            sourceEndMs = splitSource
-        )
-        val right = location.clip.copy(
-            id = UUID.randomUUID().toString(),
-            sourceStartMs = splitSource
-        )
-        clips = clips.toMutableList().apply {
-            removeAt(location.clipIndex)
-            add(location.clipIndex, right)
-            add(location.clipIndex, left)
-        }
-        selectedClipId = right.id
+        val result = TimelineEditor.split(clips, timelinePositionMs, MIN_SPLIT_EDGE_MS) ?: return
+        clips = result.clips
+        selectedClipId = result.selectedClipId
+        timelinePositionMs = result.playheadMs
         renderTimelineState()
         seekPreviewToTimeline(timelinePositionMs)
         requestThumbnails()
@@ -220,18 +264,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun deleteSelectedClip() {
-        if (clips.size <= 1) return
-        val selected = selectedClipId ?: return
-        val index = clips.indexOfFirst { it.id == selected }
-        if (index < 0) return
-
+        val result = TimelineEditor.delete(clips, selectedClipId, timelinePositionMs) ?: return
         previewPlayer.pause()
         playbackClipId = null
-        val removedTimelineStart = TimelineMath.clipStartMs(clips, selected)
-        val nextClips = clips.toMutableList().apply { removeAt(index) }
-        clips = nextClips
-        selectedClipId = clips.getOrNull(index)?.id ?: clips.lastOrNull()?.id
-        timelinePositionMs = removedTimelineStart.coerceIn(0, TimelineMath.totalDurationMs(clips))
+        clips = result.clips
+        selectedClipId = result.selectedClipId
+        timelinePositionMs = result.playheadMs
         renderTimelineState()
         seekPreviewToTimeline(timelinePositionMs)
         requestThumbnails()
@@ -239,15 +277,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun applyTrim(clipId: String, startMs: Int, endMs: Int, finished: Boolean) {
-        val index = clips.indexOfFirst { it.id == clipId }
-        if (index < 0) return
-        val sourceMax = sourceDurationMs.takeIf { it > 1 } ?: Int.MAX_VALUE
-        val safeStart = startMs.coerceIn(0, sourceMax - 1)
-        val safeEnd = endMs.coerceIn(safeStart + 1, sourceMax)
-
-        clips = clips.toMutableList().apply {
-            this[index] = this[index].copy(sourceStartMs = safeStart, sourceEndMs = safeEnd)
-        }
+        val clip = clips.firstOrNull { it.id == clipId } ?: return
+        val assetDuration = assetFor(clip)?.durationMs ?: 0
+        clips = TimelineEditor.trim(clips, clipId, startMs, endMs, assetDuration)
         timelinePositionMs = timelinePositionMs.coerceIn(0, TimelineMath.totalDurationMs(clips))
         renderTimelineState()
 
@@ -257,6 +289,86 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             seekPreviewToTimeline(timelinePositionMs)
             requestThumbnails()
             saveProject()
+        }
+    }
+
+    private fun reorderClip(clipId: String, targetIndex: Int, finished: Boolean) {
+        val reordered = TimelineEditor.reorder(clips, clipId, targetIndex)
+        if (reordered != clips) {
+            clips = reordered
+            selectedClipId = clipId
+            renderTimelineState()
+        }
+
+        if (finished) {
+            previewPlayer.pause()
+            playbackClipId = null
+            selectedClipId = clipId
+            timelinePositionMs = TimelineMath.clipStartMs(clips, clipId)
+            renderTimelineState()
+            seekPreviewToTimeline(timelinePositionMs)
+            requestThumbnails()
+            saveProject()
+        }
+    }
+
+    private fun addMedia(uris: List<Uri>) {
+        if (addingMedia) return
+        addingMedia = true
+        updateAddButton()
+
+        val unique = uris.distinctBy(Uri::toString)
+        unique.forEach(::persistReadAccess)
+        val names = unique.associate { it.toString() to resolveDisplayName(it) }
+
+        mediaProbe.probe(unique) { results ->
+            val existingByUri = assets.associateBy { it.uri }.toMutableMap()
+            val updatedAssets = assets.toMutableList()
+            val additions = mutableListOf<Clip>()
+
+            results.forEach { result ->
+                val key = result.uri.toString()
+                val asset = existingByUri[key] ?: MediaAsset(
+                    id = UUID.randomUUID().toString(),
+                    uri = key,
+                    displayName = names[key] ?: "Video",
+                    durationMs = result.durationMs
+                ).also {
+                    existingByUri[key] = it
+                    updatedAssets += it
+                }
+
+                val normalizedAsset = if (asset.durationMs != result.durationMs) {
+                    asset.copy(durationMs = result.durationMs).also { replacement ->
+                        val assetIndex = updatedAssets.indexOfFirst { it.id == replacement.id }
+                        if (assetIndex >= 0) updatedAssets[assetIndex] = replacement
+                        existingByUri[key] = replacement
+                    }
+                } else asset
+
+                additions += Clip(
+                    id = UUID.randomUUID().toString(),
+                    assetId = normalizedAsset.id,
+                    sourceStartMs = 0,
+                    sourceEndMs = result.durationMs
+                )
+            }
+
+            assets = updatedAssets
+            if (additions.isNotEmpty()) {
+                clips = TimelineEditor.insertAfter(clips, selectedClipId, additions)
+                selectedClipId = additions.first().id
+                timelinePositionMs = TimelineMath.clipStartMs(clips, additions.first().id)
+                renderTimelineState()
+                seekPreviewToTimeline(timelinePositionMs)
+                requestThumbnails()
+                saveProject()
+            } else {
+                binding.selectionLabel.text = "Selected video could not be read"
+            }
+
+            addingMedia = false
+            updateAddButton()
         }
     }
 
@@ -291,13 +403,27 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             binding.selectionLabel.text = "No clip selected"
         } else {
             val number = clips.indexOfFirst { it.id == selected.id } + 1
-            binding.selectionLabel.text = "Clip $number · ${formatTime(selected.durationMs)}"
+            val source = assetFor(selected)?.displayName?.substringBeforeLast('.')?.take(18).orEmpty()
+            binding.selectionLabel.text = if (source.isBlank()) {
+                "Clip $number · ${formatTime(selected.durationMs)}"
+            } else {
+                "Clip $number · $source · ${formatTime(selected.durationMs)}"
+            }
         }
     }
 
+    private fun updateAddButton() {
+        binding.addClipButton.isEnabled = !addingMedia
+        binding.addClipButton.alpha = if (addingMedia) 0.5f else 1f
+        binding.addClipButton.text = if (addingMedia) "Adding…" else "Add video"
+    }
+
     private fun requestThumbnails() {
-        if (clips.isEmpty()) return
-        thumbnailExtractor.request(Uri.parse(project.sourceUri), clips) { frames ->
+        if (clips.isEmpty()) {
+            binding.timeline.setThumbnails(emptyList())
+            return
+        }
+        thumbnailExtractor.request(assets, clips) { frames ->
             if (!isFinishing && !isDestroyed) binding.timeline.setThumbnails(frames)
         }
     }
@@ -306,12 +432,30 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (!::project.isInitialized) return
         project = project.copy(
             updatedAt = System.currentTimeMillis(),
-            sourceDurationMs = sourceDurationMs.coerceAtLeast(project.sourceDurationMs),
+            assets = assets,
             clips = clips,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId
         )
         repository.save(project)
+    }
+
+    private fun assetFor(clip: Clip): MediaAsset? = assets.firstOrNull { it.id == clip.assetId }
+
+    private fun resolveDisplayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (column >= 0) return cursor.getString(column) ?: "Video"
+            }
+        }
+        return "Video"
+    }
+
+    private fun persistReadAccess(uri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
 
     private fun formatTime(ms: Int): String {
@@ -324,6 +468,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     companion object {
         const val EXTRA_PROJECT_ID = "vedito.project_id"
+        private const val MAX_ADDED_VIDEOS = 12
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300
         private const val END_GUARD_MS = 35
