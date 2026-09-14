@@ -5,12 +5,14 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import com.vedito.app.core.model.MediaAsset
 import java.util.concurrent.Executors
 
 class MediaProbe(context: Context) {
     data class Result(
         val uri: Uri,
-        val durationMs: Int
+        val durationMs: Int,
+        val frameRate: Float
     )
 
     private val appContext = context.applicationContext
@@ -32,7 +34,11 @@ class MediaProbe(context: Context) {
                         ?.coerceIn(0L, Int.MAX_VALUE.toLong())
                         ?.toInt()
                         ?: 0
-                    Result(uri, duration).takeIf { it.durationMs > 0 }
+                    val fps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                        ?.toFloatOrNull()
+                        ?.takeIf { it.isFinite() && it >= 1f && it <= 240f }
+                        ?: MediaAsset.DEFAULT_FRAME_RATE
+                    Result(uri, duration, fps).takeIf { it.durationMs > 0 }
                 } catch (_: Exception) {
                     null
                 } finally {

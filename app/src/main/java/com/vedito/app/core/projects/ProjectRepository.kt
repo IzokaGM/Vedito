@@ -50,7 +50,9 @@ class ProjectRepository(context: Context) {
             assets = assets,
             clips = clips,
             playheadMs = item.optInt("playheadMs", 0),
-            selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() }
+            selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
+            timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
+            timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
     }
 
@@ -68,7 +70,11 @@ class ProjectRepository(context: Context) {
                             id = assetId,
                             uri = uri,
                             displayName = asset.optString("displayName").ifBlank { "Video" },
-                            durationMs = asset.optInt("durationMs", 0)
+                            durationMs = asset.optInt("durationMs", 0),
+                            frameRate = asset.optDouble("frameRate", MediaAsset.DEFAULT_FRAME_RATE.toDouble())
+                                .toFloat()
+                                .takeIf { it.isFinite() && it in 1f..240f }
+                                ?: MediaAsset.DEFAULT_FRAME_RATE
                         )
                     )
                 }
@@ -83,7 +89,8 @@ class ProjectRepository(context: Context) {
                 id = "legacy-${item.optString("id")}",
                 uri = legacyUri,
                 displayName = item.optString("title").ifBlank { "Video" },
-                durationMs = item.optInt("sourceDurationMs", 0)
+                durationMs = item.optInt("sourceDurationMs", 0),
+                frameRate = MediaAsset.DEFAULT_FRAME_RATE
             )
         )
     }
@@ -117,6 +124,7 @@ class ProjectRepository(context: Context) {
                     .put("uri", asset.uri)
                     .put("displayName", asset.displayName)
                     .put("durationMs", asset.durationMs)
+                    .put("frameRate", asset.frameRate.toDouble())
             )
         }
 
@@ -140,12 +148,14 @@ class ProjectRepository(context: Context) {
             .put("clips", clipArray)
             .put("playheadMs", project.playheadMs)
             .put("selectedClipId", project.selectedClipId ?: "")
+            .put("timelineZoom", project.timelineZoom.toDouble())
+            .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
 
     companion object {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 4
+        private const val SCHEMA_VERSION = 5
     }
 }

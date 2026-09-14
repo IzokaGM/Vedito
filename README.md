@@ -1,23 +1,38 @@
-# Vedito Patch 04 — Multi-Clip Timeline Core
+# Vedito Patch 05 — Timeline Pro Foundation
 
-Native Android patch for `com.vedito.app`.
+Native Android/Kotlin patch for `com.vedito.app`.
 
 ## Included
-- Multi-video projects: add up to 12 videos from the editor.
-- Proper project media model: reusable media assets are separated from timeline clips.
-- Multi-source preview playback switches between source videos automatically.
-- Multi-source thumbnail extraction across the complete timeline.
-- Long-press a clip and drag it across the timeline to reorder.
-- Ripple timeline behavior: trim/delete/reorder/add operations automatically shift following clips.
-- Split/delete/trim continue to work across multi-video projects.
-- Autosave now persists media assets, clip order, trims, playhead and selection.
-- Patch 03 and earlier single-source projects migrate automatically on load.
-- Existing system-bar / navigation-bar inset fixes remain included.
 
-## Patch rules
-- No workflow files are included in this ZIP.
-- Package remains `com.vedito.app`.
-- Existing two-workflow GitHub Actions chain stays unchanged.
+- Bounded Undo / Redo history for destructive timeline edits
+- Pinch-to-zoom timeline (1×–8×)
+- Auto-follow viewport while playback moves
+- Edge auto-pan while scrubbing/reordering on a zoomed timeline
+- Clip-edge snapping + haptic snap feedback
+- Frame-quantized scrubbing and trim gestures
+- Frame-rate metadata probing with safe 30 fps fallback
+- Frame-style timecode display
+- Duplicate selected clip
+- Replace selected clip media while preserving timeline position/order and as much trim duration as the replacement allows
+- Zoom + viewport persisted with the project
+- Runtime `TimelineIndex` prefix cache / binary lookup for smoother large timelines
+- Thumbnail density scales with timeline zoom (capped to avoid runaway memory)
+- Existing multi-clip add/reorder/trim/split/delete/autosave behavior retained
 
-## Acceptance path
-Open existing project → Add video → add 2+ source videos → scrub across clips → play across clip boundary → trim → split → delete → long-hold/drag to reorder → leave editor → reopen project → clip order and edits remain.
+## Compatibility
+
+- Projects created by previous Vedito patches still load.
+- Project schema is bumped to v5; missing FPS/zoom data receives safe defaults.
+- Undo/redo history is intentionally session-only. The latest committed project state is persisted; reopening starts a fresh history stack.
+
+## Acceptance checks targeted by this patch
+
+1. Add many clips and keep playback/scrub responsive.
+2. Split, delete, duplicate, trim, reorder, add and replace clips; Undo/Redo should reverse/restore committed edits.
+3. Pinch the timeline to zoom; the viewport should follow the playhead during playback.
+4. Scrubbing near clip boundaries should snap to boundaries.
+5. Close/reopen the project; clips, selection, playhead, zoom and viewport should persist.
+
+## Build
+
+No workflow/YAML is included in this ZIP. Keep using the existing GitHub Actions build workflow.

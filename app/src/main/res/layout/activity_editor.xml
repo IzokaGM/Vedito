@@ -150,7 +150,7 @@
         <com.vedito.app.feature.editor.timeline.TimelineScrubberView
             android:id="@+id/timeline"
             android:layout_width="match_parent"
-            android:layout_height="96dp"
+            android:layout_height="104dp"
             android:layout_marginTop="5dp"
             android:contentDescription="Video timeline" />
 
@@ -158,21 +158,46 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="Scrub to seek · drag edges to trim · hold clip to reorder"
+            android:text="Scrub · snap to edges · pinch timeline to zoom · hold clip to reorder"
             android:textColor="@color/vedito_muted"
             android:textSize="10sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="28dp"
+            android:layout_marginTop="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/zoomLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:text="1.0×"
+                android:textColor="@color/vedito_accent"
+                android:textSize="11sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Frame-snapped timeline"
+                android:textColor="@color/vedito_muted"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="4dp"
             android:gravity="center"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/addClipButton"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="40dp"
                 android:layout_marginEnd="4dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tool_button"
@@ -181,12 +206,12 @@
                 android:gravity="center"
                 android:text="Add video"
                 android:textColor="@color/vedito_text"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/splitButton"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="40dp"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="4dp"
                 android:layout_weight="1"
@@ -196,12 +221,12 @@
                 android:gravity="center"
                 android:text="Split"
                 android:textColor="@color/vedito_text"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/deleteButton"
                 android:layout_width="0dp"
-                android:layout_height="44dp"
+                android:layout_height="40dp"
                 android:layout_marginStart="4dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_tool_button"
@@ -210,7 +235,73 @@
                 android:gravity="center"
                 android:text="Delete"
                 android:textColor="@color/vedito_text"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/undoButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Undo"
+                android:textColor="@color/vedito_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/redoButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Redo"
+                android:textColor="@color/vedito_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/duplicateButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Duplicate"
+                android:textColor="@color/vedito_text"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/replaceButton"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="3dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Replace"
+                android:textColor="@color/vedito_text"
+                android:textSize="10sp" />
         </LinearLayout>
     </LinearLayout>
 

@@ -59,6 +59,18 @@ object TimelineEditor {
         return clips.toMutableList().apply { addAll(insertIndex, additions) }
     }
 
+    fun duplicate(clips: List<Clip>, selectedId: String?): Result? {
+        val index = clips.indexOfFirst { it.id == selectedId }
+        if (index < 0) return null
+        val copy = clips[index].copy(id = UUID.randomUUID().toString())
+        val next = clips.toMutableList().apply { add(index + 1, copy) }
+        return Result(
+            clips = next,
+            selectedClipId = copy.id,
+            playheadMs = TimelineMath.clipStartMs(next, copy.id)
+        )
+    }
+
     fun reorder(clips: List<Clip>, clipId: String, targetIndex: Int): List<Clip> {
         val from = clips.indexOfFirst { it.id == clipId }
         if (from < 0 || clips.size < 2) return clips

@@ -37,7 +37,7 @@ class ThumbnailExtractor(context: Context) {
 
             try {
                 val total = TimelineMath.totalDurationMs(clipSnapshot)
-                val count = frameCount.coerceIn(4, 16)
+                val count = frameCount.coerceIn(6, 48)
                 repeat(count) { index ->
                     val fraction = (index + 0.5f) / count
                     val timelineMs = (total * fraction).roundToInt().coerceIn(0, total)
@@ -63,7 +63,7 @@ class ThumbnailExtractor(context: Context) {
                     frames += raw?.let(::scaleDown)
                 }
             } catch (_: Exception) {
-                val wanted = frameCount.coerceIn(4, 16)
+                val wanted = frameCount.coerceIn(6, 48)
                 while (frames.size < wanted) frames += null
             } finally {
                 runCatching { retriever?.release() }
