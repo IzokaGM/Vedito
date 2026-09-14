@@ -55,7 +55,7 @@
                 android:paddingTop="7dp"
                 android:paddingEnd="11dp"
                 android:paddingBottom="7dp"
-                android:text="0.2"
+                android:text="0.3"
                 android:textColor="@color/vedito_muted"
                 android:textSize="12sp" />
         </LinearLayout>

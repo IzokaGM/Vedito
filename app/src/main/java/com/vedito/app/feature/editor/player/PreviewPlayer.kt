@@ -29,6 +29,7 @@ class PreviewPlayer(
     private var durationMs: Int = 0
     private var videoWidth: Int = 0
     private var videoHeight: Int = 0
+    private var pendingPlayAfterSeek = false
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -36,7 +37,7 @@ class PreviewPlayer(
             if (active != null) {
                 listener.onProgress(active.currentPosition.coerceAtLeast(0), durationMs, active.isPlaying)
             }
-            mainHandler.postDelayed(this, 100L)
+            mainHandler.postDelayed(this, 60L)
         }
     }
 
@@ -50,19 +51,24 @@ class PreviewPlayer(
         if (textureView.isAvailable) prepare(uri)
     }
 
-    fun toggle() {
+    fun isPlaying(): Boolean = player?.isPlaying == true
+
+    fun playFrom(positionMs: Int) {
         val active = player ?: return
-        if (active.isPlaying) active.pause() else active.start()
-        listener.onPlaybackStateChanged(active.isPlaying)
+        val target = positionMs.coerceIn(0, max(0, durationMs))
+        pendingPlayAfterSeek = true
+        active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
     }
 
     fun pause() {
+        pendingPlayAfterSeek = false
         val active = player ?: return
         if (active.isPlaying) active.pause()
         listener.onPlaybackStateChanged(false)
     }
 
     fun seekTo(positionMs: Int) {
+        pendingPlayAfterSeek = false
         val active = player ?: return
         val target = positionMs.coerceIn(0, max(0, durationMs))
         active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
@@ -113,11 +119,20 @@ class PreviewPlayer(
                     this@PreviewPlayer.videoHeight = height
                     applyVideoTransform(textureView.width, textureView.height)
                 }
+                setOnSeekCompleteListener { ready ->
+                    if (pendingPlayAfterSeek) {
+                        pendingPlayAfterSeek = false
+                        ready.start()
+                        listener.onPlaybackStateChanged(true)
+                    }
+                }
                 setOnCompletionListener {
+                    pendingPlayAfterSeek = false
                     listener.onPlaybackStateChanged(false)
                     listener.onProgress(durationMs, durationMs, false)
                 }
                 setOnErrorListener { _, _, _ ->
+                    pendingPlayAfterSeek = false
                     listener.onError("This video codec cannot be previewed on this device.")
                     true
                 }

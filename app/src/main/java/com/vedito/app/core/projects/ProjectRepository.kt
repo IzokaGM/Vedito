@@ -1,6 +1,7 @@
 package com.vedito.app.core.projects
 
 import android.content.Context
+import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.Project
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,12 +16,29 @@ class ProjectRepository(context: Context) {
             buildList {
                 for (index in 0 until array.length()) {
                     val item = array.getJSONObject(index)
+                    val clips = buildList {
+                        val clipArray = item.optJSONArray("clips") ?: JSONArray()
+                        for (clipIndex in 0 until clipArray.length()) {
+                            val clip = clipArray.getJSONObject(clipIndex)
+                            add(
+                                Clip(
+                                    id = clip.getString("id"),
+                                    sourceStartMs = clip.optInt("sourceStartMs", 0),
+                                    sourceEndMs = clip.optInt("sourceEndMs", 0)
+                                )
+                            )
+                        }
+                    }
                     add(
                         Project(
                             id = item.getString("id"),
                             title = item.getString("title"),
                             sourceUri = item.getString("sourceUri"),
-                            updatedAt = item.getLong("updatedAt")
+                            updatedAt = item.getLong("updatedAt"),
+                            sourceDurationMs = item.optInt("sourceDurationMs", 0),
+                            clips = clips,
+                            playheadMs = item.optInt("playheadMs", 0),
+                            selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() }
                         )
                     )
                 }
@@ -39,12 +57,25 @@ class ProjectRepository(context: Context) {
 
         val array = JSONArray()
         projects.forEach { item ->
+            val clipArray = JSONArray()
+            item.clips.forEach { clip ->
+                clipArray.put(
+                    JSONObject()
+                        .put("id", clip.id)
+                        .put("sourceStartMs", clip.sourceStartMs)
+                        .put("sourceEndMs", clip.sourceEndMs)
+                )
+            }
             array.put(
                 JSONObject()
                     .put("id", item.id)
                     .put("title", item.title)
                     .put("sourceUri", item.sourceUri)
                     .put("updatedAt", item.updatedAt)
+                    .put("sourceDurationMs", item.sourceDurationMs)
+                    .put("clips", clipArray)
+                    .put("playheadMs", item.playheadMs)
+                    .put("selectedClipId", item.selectedClipId ?: "")
             )
         }
         preferences.edit().putString(KEY_PROJECTS, array.toString()).apply()

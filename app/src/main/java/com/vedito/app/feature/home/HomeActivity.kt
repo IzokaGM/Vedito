@@ -15,6 +15,8 @@ import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
 import com.vedito.app.databinding.ActivityHomeBinding
 import com.vedito.app.feature.editor.EditorActivity
+import com.vedito.app.ui.applySystemBarInsets
+import com.vedito.app.ui.configureVeditoSystemBars
 import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
@@ -29,8 +31,10 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureVeditoSystemBars()
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.root.applySystemBarInsets()
         projects = ProjectRepository(this)
 
         binding.newProjectButton.setOnClickListener {
