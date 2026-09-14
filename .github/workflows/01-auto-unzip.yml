@@ -1,0 +1,88 @@
+name: Unzip Uploaded Patch
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.zip'
+      - '**/*.zip'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unzip-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Find and extract ZIP patches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -d '' ZIP_FILES < <(find . -type f -name '*.zip' -not -path './.git/*' -print0)
+
+          if [ "${#ZIP_FILES[@]}" -eq 0 ]; then
+            echo "No ZIP file found."
+            exit 0
+          fi
+
+          for ZIP_FILE in "${ZIP_FILES[@]}"; do
+            echo "Processing: $ZIP_FILE"
+            TMP_DIR="$(mktemp -d)"
+
+            unzip -q -o "$ZIP_FILE" -d "$TMP_DIR"
+
+            # Project rule: workflow/YAML files must stay outside patch ZIPs.
+            if find "$TMP_DIR" -type f \( -iname '*.yml' -o -iname '*.yaml' \) | grep -q .; then
+              echo "ERROR: YAML file detected inside $ZIP_FILE"
+              echo "Keep .yml/.yaml files separate from patch ZIPs."
+              rm -rf "$TMP_DIR"
+              exit 1
+            fi
+
+            # If the ZIP has one wrapper folder, copy its CONTENTS to repo root.
+            mapfile -d '' TOP_LEVEL < <(find "$TMP_DIR" -mindepth 1 -maxdepth 1 -print0)
+            SOURCE_DIR="$TMP_DIR"
+
+            if [ "${#TOP_LEVEL[@]}" -eq 1 ] && [ -d "${TOP_LEVEL[0]}" ]; then
+              SOURCE_DIR="${TOP_LEVEL[0]}"
+            fi
+
+            rsync -a \
+              --exclude='.git/' \
+              --exclude='.github/workflows/' \
+              "$SOURCE_DIR"/ ./
+
+            rm -f "$ZIP_FILE"
+            rm -rf "$TMP_DIR"
+          done
+
+      - name: Commit extracted patch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Nothing changed after extraction."
+            exit 0
+          fi
+
+          git commit -m "chore: auto-unzip uploaded patch"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -1,0 +1,129 @@
+name: Build Android APK
+
+on:
+  workflow_run:
+    workflows:
+      - Unzip Uploaded Patch
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout extracted branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-37" \
+            "build-tools;37.0.0" \
+            "ndk;27.1.12297006"
+
+      - name: Prepare native Android project
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f android/gradlew ]; then
+            chmod +x android/gradlew
+            echo "build_root=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+            echo "Using native Android project from repository."
+            exit 0
+          fi
+
+          RN_VERSION="$(node -p "require('./package.json').dependencies?.['react-native'] || '0.87.1'")"
+          echo "No android/ directory found. Bootstrapping React Native $RN_VERSION for CI build."
+
+          rm -rf .ci-native
+          mkdir -p .ci-native
+
+          (
+            cd .ci-native
+            npx --yes @react-native-community/cli@latest init VECEditor \
+              --version "$RN_VERSION" \
+              --skip-install
+          )
+
+          # Overlay project source while keeping generated native files.
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.ci-native/' \
+            --exclude='node_modules/' \
+            --exclude='android/' \
+            --exclude='ios/' \
+            --exclude='package.json' \
+            ./ .ci-native/VECEditor/
+
+          node <<'NODE'
+          const fs = require('fs');
+          const source = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const targetPath = '.ci-native/VECEditor/package.json';
+          const target = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+
+          target.dependencies = { ...target.dependencies, ...source.dependencies };
+          target.devDependencies = { ...target.devDependencies, ...source.devDependencies };
+          target.engines = { ...target.engines, ...source.engines };
+
+          fs.writeFileSync(targetPath, JSON.stringify(target, null, 2) + '\n');
+          NODE
+
+          chmod +x .ci-native/VECEditor/android/gradlew
+          echo "build_root=$GITHUB_WORKSPACE/.ci-native/VECEditor" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: ${{ steps.prepare.outputs.build_root }}
+        run: npm install --no-audit --no-fund
+
+      - name: Type check
+        working-directory: ${{ steps.prepare.outputs.build_root }}
+        run: npx tsc --noEmit
+
+      - name: Build debug APK
+        working-directory: ${{ steps.prepare.outputs.build_root }}/android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vedito-debug-apk
+          path: ${{ steps.prepare.outputs.build_root }}/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
