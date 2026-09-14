@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vedito_bg">#090A0F</color>
+    <color name="vedito_surface">#11131A</color>
+    <color name="vedito_surface_raised">#171A23</color>
+    <color name="vedito_stroke">#282C39</color>
+    <color name="vedito_text">#F7F7FA</color>
+    <color name="vedito_muted">#949AA8</color>
+    <color name="vedito_accent">#8D7BFF</color>
+    <color name="vedito_accent_pressed">#7462E8</color>
+    <color name="vedito_black">#000000</color>
+    <color name="vedito_white">#FFFFFF</color>
+</resources>

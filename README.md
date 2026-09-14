@@ -1,14 +1,29 @@
-# Vedito Native Migration
+# Vedito — Clean Native Rewrite (0.2)
 
-This patch replaces the React Native runtime with a native Android foundation.
+This patch replaces the active app architecture with an independent native Android implementation.
 
-- App: Vedito
-- Package: `com.vedito.app`
+## Active stack
 - Native Android / Kotlin
-- No Metro server
-- No JavaScript runtime required on device
-- SAF video picker with persisted read access
-- Native video preview, seek and play/pause
-- Minimal dependency footprint
+- Android Views + ViewBinding
+- Activity Result Photo Picker for video import
+- Framework MediaPlayer + TextureView preview
+- Custom native timeline scrubber
+- Local project index
+- Package: `com.vedito.app`
 
-The repository may still contain old React Native source files after ZIP extraction because the unzip workflow overlays files rather than deleting them. They are not used by the native Gradle build and can be cleaned in a later patch.
+## Important
+- No React Native
+- No Metro/Hermes runtime
+- No Cutrim source is used as the application base
+- Known files from the earlier migration bootstrap are overwritten with inert placeholders so an overlay unzip cannot compile the old implementation.
+- No workflow/YAML file is included in this ZIP.
+
+## Working features in this patch
+1. Create a project by choosing a video.
+2. Save/reopen recent projects.
+3. Native video preview.
+4. Play/pause.
+5. Timeline drag/scrub and seek.
+6. Autosave recent project timestamp.
+
+The editing engine (trim/split/multitrack/export) is intentionally not faked in this foundation and will be added in subsequent patches.

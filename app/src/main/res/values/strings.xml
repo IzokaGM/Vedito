@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vedito</string>
+    <string name="home_tagline">Shape the cut.</string>
+    <string name="new_edit">New edit</string>
+    <string name="import_video">Import a video to start editing</string>
+    <string name="recent_projects">Recent projects</string>
+    <string name="no_projects">Your recent edits will appear here.</string>
+    <string name="editor_clip">Original clip</string>
+</resources>

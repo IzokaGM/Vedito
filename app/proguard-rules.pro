@@ -1,1 +1,1 @@
-# Vedito native app. Keep this file intentionally small until external media libraries are added.
+# Vedito currently uses only framework/AndroidX APIs; no custom keep rules required.
