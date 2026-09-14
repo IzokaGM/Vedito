@@ -102,15 +102,15 @@ class PreviewPlayer(
                 setSurface(surface)
                 setOnPreparedListener { ready ->
                     durationMs = max(0, ready.duration)
-                    videoWidth = ready.videoWidth
-                    videoHeight = ready.videoHeight
+                    this@PreviewPlayer.videoWidth = ready.videoWidth
+                    this@PreviewPlayer.videoHeight = ready.videoHeight
                     applyVideoTransform(textureView.width, textureView.height)
                     listener.onReady(durationMs)
                     listener.onPlaybackStateChanged(false)
                 }
                 setOnVideoSizeChangedListener { _, width, height ->
-                    videoWidth = width
-                    videoHeight = height
+                    this@PreviewPlayer.videoWidth = width
+                    this@PreviewPlayer.videoHeight = height
                     applyVideoTransform(textureView.width, textureView.height)
                 }
                 setOnCompletionListener {
