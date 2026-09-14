@@ -1,5 +1,7 @@
 package com.vedito.app.core.timeline
 
+import com.vedito.app.core.model.AudioAsset
+import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
 import java.util.ArrayDeque
@@ -13,7 +15,10 @@ class EditorHistory(private val capacity: Int = 40) {
     data class Snapshot(
         val assets: List<MediaAsset>,
         val clips: List<Clip>,
+        val audioAssets: List<AudioAsset>,
+        val audioClips: List<AudioClip>,
         val selectedClipId: String?,
+        val selectedAudioClipId: String?,
         val playheadMs: Int
     )
 

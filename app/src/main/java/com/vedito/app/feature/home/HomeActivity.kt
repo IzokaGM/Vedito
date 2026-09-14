@@ -75,9 +75,11 @@ class HomeActivity : ComponentActivity() {
         recent.forEach { project ->
             val row = LayoutInflater.from(this).inflate(R.layout.item_recent_project, binding.recentList, false)
             val clipCount = project.clips.size.coerceAtLeast(project.assets.size)
+            val audioCount = project.audioClips.size
             row.findViewById<TextView>(R.id.projectName).text = project.title
+            val audioMeta = if (audioCount > 0) " · $audioCount audio" else ""
             row.findViewById<TextView>(R.id.projectMeta).text =
-                "$clipCount clip${if (clipCount == 1) "" else "s"} · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
+                "$clipCount clip${if (clipCount == 1) "" else "s"}$audioMeta · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
             row.setOnClickListener { openEditor(project.id) }
             binding.recentList.addView(row)
         }

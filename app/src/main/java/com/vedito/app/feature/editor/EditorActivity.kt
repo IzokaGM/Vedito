@@ -10,7 +10,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.vedito.app.R
+import com.vedito.app.core.audio.AudioPlaybackEngine
+import com.vedito.app.core.audio.AudioProbe
 import com.vedito.app.core.media.MediaProbe
+import com.vedito.app.core.model.AudioAsset
+import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
@@ -34,13 +38,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var previewPlayer: PreviewPlayer
     private lateinit var thumbnailExtractor: ThumbnailExtractor
     private lateinit var mediaProbe: MediaProbe
+    private lateinit var audioProbe: AudioProbe
+    private lateinit var audioPlayback: AudioPlaybackEngine
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
     private var timelineIndex = TimelineIndex(emptyList())
     private var assets: List<MediaAsset> = emptyList()
     private var clips: List<Clip> = emptyList()
+    private var audioAssets: List<AudioAsset> = emptyList()
+    private var audioClips: List<AudioClip> = emptyList()
     private var selectedClipId: String? = null
+    private var selectedAudioClipId: String? = null
     private var timelinePositionMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
@@ -66,6 +75,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (uri != null && target != null) replaceClipMedia(target, uri)
     }
 
+    private val addAudioPicker = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) addAudio(uris.take(MAX_ADDED_AUDIO))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureVeditoSystemBars()
@@ -76,6 +91,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         repository = ProjectRepository(this)
         thumbnailExtractor = ThumbnailExtractor(this)
         mediaProbe = MediaProbe(this)
+        audioProbe = AudioProbe(this)
+        audioPlayback = AudioPlaybackEngine(this)
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)
         val loaded = projectId?.let(repository::find)
@@ -87,8 +104,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         project = loaded
         assets = project.assets
         clips = TimelineMath.sanitized(project.clips, assets)
+        audioAssets = project.audioAssets
+        audioClips = sanitizeAudioClips(project.audioClips)
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
+        selectedAudioClipId = project.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = project.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         timelineZoom = project.timelineZoom.coerceIn(1f, 8f)
@@ -110,6 +130,17 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.redoButton.setOnClickListener { redoEdit() }
         binding.duplicateButton.setOnClickListener { duplicateSelectedClip() }
         binding.replaceButton.setOnClickListener { launchReplaceSelectedClip() }
+        binding.addAudioButton.setOnClickListener { addAudioPicker.launch(arrayOf("audio/*")) }
+        binding.audioMuteButton.setOnClickListener { toggleSelectedAudioMute() }
+        binding.audioVolumeDownButton.setOnClickListener { adjustSelectedAudioVolume(-0.1f) }
+        binding.audioVolumeUpButton.setOnClickListener { adjustSelectedAudioVolume(0.1f) }
+        binding.audioDeleteButton.setOnClickListener { deleteSelectedAudio() }
+        binding.audioTimeline.onAudioClipSelected = { id ->
+            selectedAudioClipId = id
+            updateAudioUi()
+            renderAudioState()
+            saveProject()
+        }
 
         binding.timeline.onClipSelected = { id ->
             selectedClipId = id
@@ -118,6 +149,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.timeline.onScrubbed = { position ->
             userScrubbing = true
             previewPlayer.pause()
+            audioPlayback.pause()
             playbackClipId = null
             setTimelinePosition(position)
             val now = SystemClock.uptimeMillis()
@@ -129,6 +161,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.timeline.onSeekFinished = { position ->
             setTimelinePosition(position)
             seekPreviewToTimeline(position)
+            audioPlayback.seekTo(position)
             userScrubbing = false
             saveProject()
         }
@@ -142,6 +175,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             timelineZoom = zoom
             timelineViewportStartMs = startMs
             updateZoomUi()
+            renderAudioState()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -149,6 +183,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         previewPlayer = PreviewPlayer(this, binding.previewTexture, this)
+        audioPlayback.setTimeline(audioAssets, audioClips)
         renderTimelineState(restoreViewport = true)
         openInitialPreview()
         requestThumbnails()
@@ -158,12 +193,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     override fun onPause() {
         super.onPause()
         if (::previewPlayer.isInitialized) previewPlayer.pause()
+        if (::audioPlayback.isInitialized) audioPlayback.pause()
         if (::project.isInitialized) saveProject()
     }
 
     override fun onDestroy() {
         if (::thumbnailExtractor.isInitialized) thumbnailExtractor.release()
         if (::mediaProbe.isInitialized) mediaProbe.release()
+        if (::audioProbe.isInitialized) audioProbe.release()
+        if (::audioPlayback.isInitialized) audioPlayback.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
@@ -223,11 +261,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val timelineStart = timelineIndex.startOf(clip.id)
         val offset = (positionMs - clip.sourceStartMs).coerceIn(0, clip.durationMs)
         setTimelinePosition(timelineStart + offset)
+        audioPlayback.sync(timelinePositionMs, playing = true)
     }
 
     override fun onPlaybackStateChanged(isPlaying: Boolean) {
         binding.playPauseButton.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
         binding.playPauseButton.contentDescription = if (isPlaying) "Pause" else "Play"
+        if (isPlaying) audioPlayback.playFrom(timelinePositionMs) else audioPlayback.pause()
     }
 
     override fun onError(message: String) {
@@ -263,6 +303,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val next = clips.getOrNull(currentIndex + 1)
         if (next == null) {
             previewPlayer.pause()
+            audioPlayback.pause()
             playbackClipId = null
             setTimelinePosition(timelineIndex.totalDurationMs)
             saveProject()
@@ -525,8 +566,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun applySnapshot(snapshot: EditorHistory.Snapshot) {
         assets = snapshot.assets
         clips = TimelineMath.sanitized(snapshot.clips, assets)
+        audioAssets = snapshot.audioAssets
+        audioClips = sanitizeAudioClips(snapshot.audioClips)
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
+        selectedAudioClipId = snapshot.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = snapshot.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         renderTimelineState()
@@ -550,7 +594,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun snapshot(): EditorHistory.Snapshot = EditorHistory.Snapshot(
         assets = assets.toList(),
         clips = clips.toList(),
+        audioAssets = audioAssets.toList(),
+        audioClips = audioClips.toList(),
         selectedClipId = selectedClipId,
+        selectedAudioClipId = selectedAudioClipId,
         playheadMs = timelinePositionMs
     )
 
@@ -570,6 +617,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateSelectionUi()
         updateHistoryUi()
         updateZoomUi()
+        audioClips = sanitizeAudioClips(audioClips)
+        if (selectedAudioClipId != null && audioClips.none { it.id == selectedAudioClipId }) selectedAudioClipId = audioClips.firstOrNull()?.id
+        pruneUnusedAudioAssets()
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
     }
 
     private fun setTimelinePosition(positionMs: Int) {
@@ -578,6 +631,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         timelineViewportStartMs = binding.timeline.currentViewportStartMs
         updateTimecodeUi()
         updateSelectionUi()
+        binding.audioTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
     }
 
     private fun updateTimecodeUi() {
@@ -686,6 +740,196 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
     }
 
+    private fun addAudio(uris: List<Uri>) {
+        val projectDuration = timelineIndex.totalDurationMs
+        if (projectDuration <= 0) return
+
+        val unique = uris.distinctBy(Uri::toString)
+        unique.forEach(::persistReadAccess)
+        val names = unique.associate { it.toString() to resolveAudioDisplayName(it) }
+        audioProbe.probe(unique) { results ->
+            if (results.isEmpty()) {
+                binding.audioSelectionLabel.text = "Selected audio could not be read"
+                return@probe
+            }
+
+            val before = snapshot()
+            val updatedAssets = audioAssets.toMutableList()
+            val byUri = updatedAssets.associateBy { it.uri }.toMutableMap()
+            val additions = mutableListOf<AudioClip>()
+            val start = timelinePositionMs.coerceIn(0, projectDuration)
+            val available = (projectDuration - start).coerceAtLeast(0)
+            if (available <= 0) return@probe
+
+            results.forEach { result ->
+                val key = result.uri.toString()
+                val existing = byUri[key]
+                val asset = if (existing == null) {
+                    AudioAsset(
+                        id = UUID.randomUUID().toString(),
+                        uri = key,
+                        displayName = names[key] ?: "Audio",
+                        durationMs = result.durationMs
+                    ).also {
+                        updatedAssets += it
+                        byUri[key] = it
+                    }
+                } else if (existing.durationMs != result.durationMs) {
+                    existing.copy(durationMs = result.durationMs).also { replacement ->
+                        val index = updatedAssets.indexOfFirst { it.id == replacement.id }
+                        if (index >= 0) updatedAssets[index] = replacement
+                        byUri[key] = replacement
+                    }
+                } else existing
+
+                val clipDuration = minOf(asset.durationMs, available)
+                if (clipDuration > 0) {
+                    additions += AudioClip(
+                        id = UUID.randomUUID().toString(),
+                        assetId = asset.id,
+                        timelineStartMs = start,
+                        sourceStartMs = 0,
+                        sourceEndMs = clipDuration,
+                        volume = 1f,
+                        muted = false
+                    )
+                }
+            }
+
+            if (additions.isEmpty()) return@probe
+            audioAssets = updatedAssets
+            audioClips = (audioClips + additions).sortedBy { it.timelineStartMs }
+            selectedAudioClipId = additions.first().id
+            history.record(before)
+            renderTimelineState()
+            audioPlayback.seekTo(timelinePositionMs)
+            saveProject()
+            updateHistoryUi()
+        }
+    }
+
+    private fun toggleSelectedAudioMute() {
+        val id = selectedAudioClipId ?: return
+        val index = audioClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        audioClips = audioClips.toMutableList().apply {
+            this[index] = this[index].copy(muted = !this[index].muted)
+        }
+        history.record(before)
+        renderTimelineState()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun adjustSelectedAudioVolume(delta: Float) {
+        val id = selectedAudioClipId ?: return
+        val index = audioClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = audioClips[index]
+        val next = (current.volume + delta).coerceIn(0f, 1f)
+        if (kotlin.math.abs(next - current.volume) < 0.001f) return
+        audioClips = audioClips.toMutableList().apply {
+            this[index] = current.copy(volume = next)
+        }
+        history.record(before)
+        renderTimelineState()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun deleteSelectedAudio() {
+        val id = selectedAudioClipId ?: return
+        if (audioClips.none { it.id == id }) return
+        val before = snapshot()
+        audioPlayback.pause()
+        audioClips = audioClips.filterNot { it.id == id }
+        selectedAudioClipId = audioClips.firstOrNull()?.id
+        pruneUnusedAudioAssets()
+        history.record(before)
+        renderTimelineState()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun sanitizeAudioClips(input: List<AudioClip>): List<AudioClip> {
+        val byId = audioAssets.associateBy { it.id }
+        val projectDuration = clips.sumOf { it.durationMs }.coerceAtLeast(0)
+        if (projectDuration <= 0) return emptyList()
+        return input.mapNotNull { clip ->
+            val asset = byId[clip.assetId] ?: return@mapNotNull null
+            if (asset.durationMs <= 0 || clip.timelineStartMs >= projectDuration) return@mapNotNull null
+            val sourceStart = clip.sourceStartMs.coerceIn(0, (asset.durationMs - 1).coerceAtLeast(0))
+            val maxSourceDuration = asset.durationMs - sourceStart
+            val maxTimelineDuration = projectDuration - clip.timelineStartMs.coerceAtLeast(0)
+            val wanted = clip.durationMs.coerceAtMost(maxSourceDuration).coerceAtMost(maxTimelineDuration)
+            if (wanted <= 0) return@mapNotNull null
+            clip.copy(
+                timelineStartMs = clip.timelineStartMs.coerceAtLeast(0),
+                sourceStartMs = sourceStart,
+                sourceEndMs = sourceStart + wanted,
+                volume = clip.volume.coerceIn(0f, 1f)
+            )
+        }.sortedBy { it.timelineStartMs }
+    }
+
+    private fun renderAudioState() {
+        binding.audioTimeline.setState(
+            clips = audioClips,
+            labelsByAssetId = audioAssets.associate { it.id to it.displayName },
+            selectedClipId = selectedAudioClipId,
+            durationMs = timelineIndex.totalDurationMs,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs,
+            positionMs = timelinePositionMs
+        )
+    }
+
+    private fun updateAudioUi() {
+        val selected = audioClips.firstOrNull { it.id == selectedAudioClipId }
+        val enabled = selected != null
+        listOf(
+            binding.audioMuteButton,
+            binding.audioVolumeDownButton,
+            binding.audioVolumeUpButton,
+            binding.audioDeleteButton
+        ).forEach { view ->
+            view.isEnabled = enabled
+            view.alpha = if (enabled) 1f else 0.38f
+        }
+
+        if (selected == null) {
+            binding.audioSelectionLabel.text = if (audioClips.isEmpty()) "No audio · add music or sound" else "Tap an audio clip to select"
+            binding.audioMuteButton.text = "Mute"
+            return
+        }
+
+        val asset = audioAssets.firstOrNull { it.id == selected.assetId }
+        val name = asset?.displayName?.substringBeforeLast('.')?.take(20).orEmpty().ifBlank { "Audio" }
+        val volumePercent = (selected.volume * 100).roundToInt()
+        binding.audioSelectionLabel.text = "$name · $volumePercent%${if (selected.muted) " · muted" else ""}"
+        binding.audioMuteButton.text = if (selected.muted) "Unmute" else "Mute"
+    }
+
+    private fun pruneUnusedAudioAssets() {
+        val used = audioClips.mapTo(mutableSetOf()) { it.assetId }
+        audioAssets = audioAssets.filter { it.id in used }
+    }
+
+    private fun resolveAudioDisplayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (column >= 0) return cursor.getString(column) ?: "Audio"
+            }
+        }
+        return "Audio"
+    }
+
     private fun pruneUnusedAssets() {
         val used = clips.mapTo(mutableSetOf()) { it.assetId }
         assets = assets.filter { it.id in used }
@@ -699,8 +943,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updatedAt = System.currentTimeMillis(),
             assets = assets,
             clips = clips,
+            audioAssets = audioAssets,
+            audioClips = audioClips,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
+            selectedAudioClipId = selectedAudioClipId,
             timelineZoom = timelineZoom,
             timelineViewportStartMs = timelineViewportStartMs
         )
@@ -740,6 +987,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     companion object {
         const val EXTRA_PROJECT_ID = "vedito.project_id"
         private const val MAX_ADDED_VIDEOS = 12
+        private const val MAX_ADDED_AUDIO = 12
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300
         private const val END_GUARD_MS = 35

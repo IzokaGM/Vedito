@@ -1,6 +1,8 @@
 package com.vedito.app.core.projects
 
 import android.content.Context
+import com.vedito.app.core.model.AudioAsset
+import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
@@ -42,6 +44,8 @@ class ProjectRepository(context: Context) {
 
         val assets = parseAssets(item)
         val clips = parseClips(item, assets, id)
+        val audioAssets = parseAudioAssets(item)
+        val audioClips = parseAudioClips(item, audioAssets)
 
         return Project(
             id = id,
@@ -49,8 +53,11 @@ class ProjectRepository(context: Context) {
             updatedAt = item.optLong("updatedAt", System.currentTimeMillis()),
             assets = assets,
             clips = clips,
+            audioAssets = audioAssets,
+            audioClips = audioClips,
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
+            selectedAudioClipId = item.optString("selectedAudioClipId").takeIf { it.isNotBlank() },
             timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
             timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
@@ -81,7 +88,6 @@ class ProjectRepository(context: Context) {
             }
         }
 
-        // Migration path for Patch 03 and earlier projects.
         val legacyUri = item.optString("sourceUri")
         if (legacyUri.isBlank()) return emptyList()
         return listOf(
@@ -115,6 +121,53 @@ class ProjectRepository(context: Context) {
         }
     }
 
+    private fun parseAudioAssets(item: JSONObject): List<AudioAsset> {
+        val array = item.optJSONArray("audioAssets") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val asset = array.optJSONObject(index) ?: continue
+                val id = asset.optString("id")
+                val uri = asset.optString("uri")
+                if (id.isBlank() || uri.isBlank()) continue
+                add(
+                    AudioAsset(
+                        id = id,
+                        uri = uri,
+                        displayName = asset.optString("displayName").ifBlank { "Audio" },
+                        durationMs = asset.optInt("durationMs", 0).coerceAtLeast(0)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseAudioClips(item: JSONObject, assets: List<AudioAsset>): List<AudioClip> {
+        val assetIds = assets.mapTo(mutableSetOf()) { it.id }
+        val array = item.optJSONArray("audioClips") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val clip = array.optJSONObject(index) ?: continue
+                val id = clip.optString("id")
+                val assetId = clip.optString("assetId")
+                if (id.isBlank() || assetId !in assetIds) continue
+                val sourceStart = clip.optInt("sourceStartMs", 0).coerceAtLeast(0)
+                val sourceEnd = clip.optInt("sourceEndMs", 0).coerceAtLeast(sourceStart)
+                if (sourceEnd <= sourceStart) continue
+                add(
+                    AudioClip(
+                        id = id,
+                        assetId = assetId,
+                        timelineStartMs = clip.optInt("timelineStartMs", 0).coerceAtLeast(0),
+                        sourceStartMs = sourceStart,
+                        sourceEndMs = sourceEnd,
+                        volume = clip.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f),
+                        muted = clip.optBoolean("muted", false)
+                    )
+                )
+            }
+        }
+    }
+
     private fun toJson(project: Project): JSONObject {
         val assetArray = JSONArray()
         project.assets.forEach { asset ->
@@ -139,6 +192,31 @@ class ProjectRepository(context: Context) {
             )
         }
 
+        val audioAssetArray = JSONArray()
+        project.audioAssets.forEach { asset ->
+            audioAssetArray.put(
+                JSONObject()
+                    .put("id", asset.id)
+                    .put("uri", asset.uri)
+                    .put("displayName", asset.displayName)
+                    .put("durationMs", asset.durationMs)
+            )
+        }
+
+        val audioClipArray = JSONArray()
+        project.audioClips.forEach { clip ->
+            audioClipArray.put(
+                JSONObject()
+                    .put("id", clip.id)
+                    .put("assetId", clip.assetId)
+                    .put("timelineStartMs", clip.timelineStartMs)
+                    .put("sourceStartMs", clip.sourceStartMs)
+                    .put("sourceEndMs", clip.sourceEndMs)
+                    .put("volume", clip.volume.toDouble())
+                    .put("muted", clip.muted)
+            )
+        }
+
         return JSONObject()
             .put("schemaVersion", SCHEMA_VERSION)
             .put("id", project.id)
@@ -146,8 +224,11 @@ class ProjectRepository(context: Context) {
             .put("updatedAt", project.updatedAt)
             .put("assets", assetArray)
             .put("clips", clipArray)
+            .put("audioAssets", audioAssetArray)
+            .put("audioClips", audioClipArray)
             .put("playheadMs", project.playheadMs)
             .put("selectedClipId", project.selectedClipId ?: "")
+            .put("selectedAudioClipId", project.selectedAudioClipId ?: "")
             .put("timelineZoom", project.timelineZoom.toDouble())
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
@@ -156,6 +237,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 5
+        private const val SCHEMA_VERSION = 6
     }
 }
