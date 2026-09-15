@@ -161,7 +161,9 @@ class ProjectRepository(context: Context) {
                         sourceStartMs = sourceStart,
                         sourceEndMs = sourceEnd,
                         volume = clip.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f),
-                        muted = clip.optBoolean("muted", false)
+                        muted = clip.optBoolean("muted", false),
+                        fadeInMs = clip.optInt("fadeInMs", 0).coerceAtLeast(0),
+                        fadeOutMs = clip.optInt("fadeOutMs", 0).coerceAtLeast(0)
                     )
                 )
             }
@@ -214,6 +216,8 @@ class ProjectRepository(context: Context) {
                     .put("sourceEndMs", clip.sourceEndMs)
                     .put("volume", clip.volume.toDouble())
                     .put("muted", clip.muted)
+                    .put("fadeInMs", clip.fadeInMs)
+                    .put("fadeOutMs", clip.fadeOutMs)
             )
         }
 
@@ -237,6 +241,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 6
+        private const val SCHEMA_VERSION = 7
     }
 }

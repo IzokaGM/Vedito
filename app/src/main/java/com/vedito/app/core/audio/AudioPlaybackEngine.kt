@@ -74,7 +74,8 @@ class AudioPlaybackEngine(private val context: Context) {
             val slot = slots[clip.id] ?: createSlot(clip, asset) ?: return@forEach
             val target = (clip.sourceStartMs + (lastTimelineMs - clip.timelineStartMs))
                 .coerceIn(clip.sourceStartMs, (clip.sourceEndMs - 1).coerceAtLeast(clip.sourceStartMs))
-            slot.player.setVolume(clip.volume.coerceIn(0f, 1f), clip.volume.coerceIn(0f, 1f))
+            val gain = effectiveGain(clip, lastTimelineMs)
+            slot.player.setVolume(gain, gain)
             if (!slot.prepared) {
                 slot.pendingPositionMs = target
                 slot.pendingPlay = playing
@@ -113,6 +114,15 @@ class AudioPlaybackEngine(private val context: Context) {
     fun release() {
         slots.values.forEach { runCatching { it.player.release() } }
         slots.clear()
+    }
+
+    private fun effectiveGain(clip: AudioClip, timelineMs: Int): Float {
+        if (clip.muted) return 0f
+        val localMs = (timelineMs - clip.timelineStartMs).coerceIn(0, clip.durationMs)
+        val remainingMs = (clip.timelineEndMs - timelineMs).coerceIn(0, clip.durationMs)
+        val fadeInGain = if (clip.fadeInMs > 0) (localMs.toFloat() / clip.fadeInMs).coerceIn(0f, 1f) else 1f
+        val fadeOutGain = if (clip.fadeOutMs > 0) (remainingMs.toFloat() / clip.fadeOutMs).coerceIn(0f, 1f) else 1f
+        return (clip.volume.coerceIn(0f, 1f) * minOf(fadeInGain, fadeOutGain)).coerceIn(0f, 1f)
     }
 
     private fun createSlot(clip: AudioClip, asset: AudioAsset): Slot? {

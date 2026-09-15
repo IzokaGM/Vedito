@@ -36,7 +36,9 @@ data class AudioClip(
     val sourceStartMs: Int,
     val sourceEndMs: Int,
     val volume: Float = 1f,
-    val muted: Boolean = false
+    val muted: Boolean = false,
+    val fadeInMs: Int = 0,
+    val fadeOutMs: Int = 0
 ) {
     val durationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)

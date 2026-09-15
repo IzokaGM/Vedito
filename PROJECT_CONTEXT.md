@@ -9,7 +9,7 @@ Vedito is a premium, native Android video editor targeting **CapCut-class capabi
 - App/brand: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Platform focus: **Android first**
-- Current version in this patch: **0.6.0 / versionCode 6**
+- Current version in this patch: **0.7.0 / versionCode 7**
 
 ## Locked technical decisions
 - **Native Android/Kotlin**, not React Native.
@@ -51,7 +51,7 @@ Primary model:
 - `MediaAsset`: source video metadata.
 - `Clip`: trimmed reference to a video asset. Main video clips are ripple-sequenced.
 - `AudioAsset`: source audio metadata.
-- `AudioClip`: timeline-positioned audio reference with volume/mute state. Audio clips can overlap.
+- `AudioClip`: timeline-positioned audio reference with source trim, volume/mute and fade state. Audio clips can overlap.
 - `Project`: assets, video clips, audio assets/clips, playhead, selections, timeline zoom and viewport.
 
 Important modules:
@@ -61,7 +61,9 @@ Important modules:
 - `core/timeline/EditorHistory.kt` — bounded runtime undo/redo snapshots.
 - `feature/editor/timeline/TimelineScrubberView.kt` — video timeline gestures/rendering.
 - `feature/editor/player/PreviewPlayer.kt` — video preview.
-- `core/audio/AudioPlaybackEngine.kt` — multi-audio preview synchronization/mixing using native MediaPlayer slots.
+- `core/audio/AudioPlaybackEngine.kt` — multi-audio preview synchronization/mixing using native MediaPlayer slots, including fade gain.
+- `core/audio/AudioTimelineEditor.kt` — pure split/normalization/fade edit math.
+- `core/audio/AudioWaveformCache.kt` — background PCM waveform decode + disk cache.
 - `feature/editor/audio/AudioTimelineView.kt` — audio lane visualization and selection.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
@@ -77,11 +79,11 @@ Important modules:
 - Undo/redo.
 - Timeline pinch zoom, snapping, duplicate, replace.
 - Patch 06: audio asset/clip model, audio import, overlapping audio preview, audio lanes, selection, volume, mute, delete, autosave and undo/redo integration.
+- Patch 07: cached PCM waveforms, audio drag/move + snapping, trim handles, split, fades and extract-audio from selected video clip.
 
 ## Explicitly not completed yet
 Do not assume these exist:
-- Audio waveform extraction.
-- Audio clip drag/move, trim handles, split, fade, ducking, beat detection, voice recording, extract-audio.
+- Audio ducking, noise reduction/voice enhancement, pitch/voice effects, beat detection/markers and voice-over recording.
 - Crop/rotate/flip/scale/position/opacity.
 - Speed/speed curves/reverse/freeze.
 - Multi-layer visual overlays/PIP.
@@ -91,16 +93,17 @@ Do not assume these exist:
 - Production export/compositor.
 - AI features, templates, cloud/account/subscription.
 
-## Current patch acceptance target (0.6.0)
-A valid Patch 06 test is:
-1. Open/create a project with video.
-2. Import one or more audio files at the playhead.
-3. See audio clips in lanes; overlapping clips may play together.
-4. Play/scrub video and hear audio preview follow timeline position.
-5. Select an audio clip; volume up/down, mute/unmute and delete must work.
-6. Undo/redo audio edits.
-7. Close/reopen project; audio clips and settings must persist.
-8. Existing Patch 05 projects must still open.
+## Current patch acceptance target (0.7.0)
+A valid Patch 07 test is:
+1. Open/create a project with video and import audio.
+2. Waveform appears after background decode/cache.
+3. Drag audio clips and verify snapping to playhead/video edit boundaries.
+4. Trim from left/right edges and split selected audio at playhead.
+5. Cycle fade-in/out and verify preview volume ramps through the fade regions.
+6. Select a video clip and extract its audio into an editable audio clip.
+7. Undo/redo the audio edits.
+8. Close/reopen project; trim/move/split/fade state must persist.
+9. Existing Patch 06 and older projects must still open with fade defaults of zero.
 
 ## Non-goals / safety against architecture drift
 - Do not return to React Native unless the owner explicitly reverses the decision.

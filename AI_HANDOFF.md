@@ -1,13 +1,21 @@
 # Vedito — AI Handoff
 
-When continuing this project with another AI, give it repository access (or at minimum these files) and use this instruction:
+Before changing anything, read these files in order:
+1. `PROJECT_CONTEXT.md`
+2. `WORKPLAN.md`
+3. `README.md`
 
-> Read `PROJECT_CONTEXT.md` and `WORKPLAN.md` completely before proposing or changing code. Preserve all locked decisions, delivery rules, package ID, architecture direction and completed functionality. Inspect the current source before coding. Do not assume planned features already exist. Continue from the current patch/milestone, keep migrations backward-compatible, and do not include YML/YAML inside patch ZIPs.
+Treat them as canonical unless the owner explicitly changes direction.
 
-Recommended context files to attach/share:
-1. `PROJECT_CONTEXT.md` — canonical decisions/current state.
-2. `WORKPLAN.md` — master roadmap and next milestones.
-3. `README.md` — current patch usage/summary.
-4. Relevant build log if the latest GitHub Action is red.
+Current release in this patch: **0.7.0 / Patch 07 — Audio Editing Pro Foundation**.
+Next planned milestone after device verification: **Patch 08 — Core Visual Transform Engine**.
 
-If a new patch changes architecture, schema, current status, or next milestone, update `PROJECT_CONTEXT.md` and `WORKPLAN.md` in that same patch so these files remain the source of truth.
+Non-negotiable delivery rules:
+- Native Android/Kotlin; do not return to React Native.
+- Package stays `com.vedito.app`.
+- Never copy Cutrim source; it was only a reference for simple standalone APK delivery.
+- Patch ZIP must extract at repo root and contain no `.yml`/`.yaml`.
+- Workflow files, if changed, are delivered separately.
+- Do not call UI-only placeholders "finished". Real behavior, persistence, undo/redo where relevant, preview integration, and a future deterministic export path matter.
+- Avoid unrelated rewrites and unnecessary APK bloat.
+- Ask for confirmation before building a new patch unless the owner already explicitly told you to start it.

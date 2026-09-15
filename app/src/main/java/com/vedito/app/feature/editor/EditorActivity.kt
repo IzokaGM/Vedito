@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.vedito.app.R
 import com.vedito.app.core.audio.AudioPlaybackEngine
 import com.vedito.app.core.audio.AudioProbe
+import com.vedito.app.core.audio.AudioTimelineEditor
+import com.vedito.app.core.audio.AudioWaveformCache
 import com.vedito.app.core.media.MediaProbe
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
@@ -40,6 +42,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var mediaProbe: MediaProbe
     private lateinit var audioProbe: AudioProbe
     private lateinit var audioPlayback: AudioPlaybackEngine
+    private lateinit var audioWaveformCache: AudioWaveformCache
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -48,6 +51,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var clips: List<Clip> = emptyList()
     private var audioAssets: List<AudioAsset> = emptyList()
     private var audioClips: List<AudioClip> = emptyList()
+    private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
     private var selectedAudioClipId: String? = null
     private var timelinePositionMs: Int = 0
@@ -60,6 +64,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var pendingTrimSnapshot: EditorHistory.Snapshot? = null
     private var pendingReorderSnapshot: EditorHistory.Snapshot? = null
     private var replaceTargetClipId: String? = null
+    private var pendingAudioEditSnapshot: EditorHistory.Snapshot? = null
 
     private val addVideoPicker = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_VIDEOS)
@@ -93,6 +98,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         mediaProbe = MediaProbe(this)
         audioProbe = AudioProbe(this)
         audioPlayback = AudioPlaybackEngine(this)
+        audioWaveformCache = AudioWaveformCache(this)
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)
         val loaded = projectId?.let(repository::find)
@@ -135,11 +141,27 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioVolumeDownButton.setOnClickListener { adjustSelectedAudioVolume(-0.1f) }
         binding.audioVolumeUpButton.setOnClickListener { adjustSelectedAudioVolume(0.1f) }
         binding.audioDeleteButton.setOnClickListener { deleteSelectedAudio() }
+        binding.audioSplitButton.setOnClickListener { splitSelectedAudioAtPlayhead() }
+        binding.audioFadeInButton.setOnClickListener { cycleSelectedAudioFade(inward = true) }
+        binding.audioFadeOutButton.setOnClickListener { cycleSelectedAudioFade(inward = false) }
+        binding.extractAudioButton.setOnClickListener { extractAudioFromSelectedVideo() }
         binding.audioTimeline.onAudioClipSelected = { id ->
             selectedAudioClipId = id
             updateAudioUi()
             renderAudioState()
             saveProject()
+        }
+        binding.audioTimeline.onAudioEditStart = { id ->
+            selectedAudioClipId = id
+            pendingAudioEditSnapshot = snapshot()
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+        }
+        binding.audioTimeline.onAudioClipEditChanged = { edited, finished ->
+            audioClips = audioClips.map { if (it.id == edited.id) edited else it }.sortedBy { it.timelineStartMs }
+            selectedAudioClipId = edited.id
+            if (finished) finishAudioGestureEdit()
         }
 
         binding.timeline.onClipSelected = { id ->
@@ -187,6 +209,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         renderTimelineState(restoreViewport = true)
         openInitialPreview()
         requestThumbnails()
+        requestAudioWaveforms()
         probeKnownAssets()
     }
 
@@ -202,6 +225,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::mediaProbe.isInitialized) mediaProbe.release()
         if (::audioProbe.isInitialized) audioProbe.release()
         if (::audioPlayback.isInitialized) audioPlayback.release()
+        if (::audioWaveformCache.isInitialized) audioWaveformCache.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
@@ -550,6 +574,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         playbackClipId = null
         pendingTrimSnapshot = null
         pendingReorderSnapshot = null
+        pendingAudioEditSnapshot = null
         val target = history.undo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -559,6 +584,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         playbackClipId = null
         pendingTrimSnapshot = null
         pendingReorderSnapshot = null
+        pendingAudioEditSnapshot = null
         val target = history.redo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -576,6 +602,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         renderTimelineState()
         seekPreviewToTimeline(timelinePositionMs)
         requestThumbnails()
+        requestAudioWaveforms()
         saveProject()
         updateHistoryUi()
     }
@@ -631,6 +658,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         timelineViewportStartMs = binding.timeline.currentViewportStartMs
         updateTimecodeUi()
         updateSelectionUi()
+        updateAudioUi()
         binding.audioTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
     }
 
@@ -660,6 +688,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.duplicateButton.alpha = if (selected != null) 1f else 0.42f
         binding.replaceButton.isEnabled = selected != null
         binding.replaceButton.alpha = if (selected != null) 1f else 0.42f
+        binding.extractAudioButton.isEnabled = selected != null
+        binding.extractAudioButton.alpha = if (selected != null) 1f else 0.42f
 
         if (selected == null) {
             binding.selectionLabel.text = "No clip selected"
@@ -803,9 +833,89 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             history.record(before)
             renderTimelineState()
             audioPlayback.seekTo(timelinePositionMs)
+            requestAudioWaveforms()
             saveProject()
             updateHistoryUi()
         }
+    }
+
+    private fun splitSelectedAudioAtPlayhead() {
+        val id = selectedAudioClipId ?: return
+        val before = snapshot()
+        val result = AudioTimelineEditor.split(audioClips, id, timelinePositionMs, MIN_AUDIO_SPLIT_EDGE_MS) ?: return
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        audioClips = result.first
+        selectedAudioClipId = result.second
+        history.record(before)
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun cycleSelectedAudioFade(inward: Boolean) {
+        val id = selectedAudioClipId ?: return
+        val index = audioClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = audioClips[index]
+        val edited = if (inward) AudioTimelineEditor.cycleFadeIn(current) else AudioTimelineEditor.cycleFadeOut(current)
+        audioClips = audioClips.toMutableList().apply { this[index] = edited }
+        history.record(before)
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun extractAudioFromSelectedVideo() {
+        val videoClip = clips.firstOrNull { it.id == selectedClipId } ?: return
+        val sourceAsset = assetFor(videoClip) ?: return
+        val before = snapshot()
+        val existingAsset = audioAssets.firstOrNull { it.uri == sourceAsset.uri }
+        val audioAsset = existingAsset ?: AudioAsset(
+            id = UUID.randomUUID().toString(),
+            uri = sourceAsset.uri,
+            displayName = "Extracted · ${sourceAsset.displayName}",
+            durationMs = sourceAsset.durationMs
+        ).also { audioAssets = audioAssets + it }
+
+        val newClip = AudioClip(
+            id = UUID.randomUUID().toString(),
+            assetId = audioAsset.id,
+            timelineStartMs = timelineIndex.startOf(videoClip.id),
+            sourceStartMs = videoClip.sourceStartMs,
+            sourceEndMs = videoClip.sourceEndMs,
+            volume = 1f,
+            muted = false
+        )
+        audioClips = (audioClips + newClip).sortedBy { it.timelineStartMs }
+        selectedAudioClipId = newClip.id
+        history.record(before)
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
+        requestAudioWaveforms()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun finishAudioGestureEdit() {
+        val before = pendingAudioEditSnapshot
+        pendingAudioEditSnapshot = null
+        audioClips = sanitizeAudioClips(audioClips)
+        if (before != null && before != snapshot()) history.record(before)
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
     }
 
     private fun toggleSelectedAudioMute() {
@@ -859,21 +969,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun sanitizeAudioClips(input: List<AudioClip>): List<AudioClip> {
         val byId = audioAssets.associateBy { it.id }
         val projectDuration = clips.sumOf { it.durationMs }.coerceAtLeast(0)
-        if (projectDuration <= 0) return emptyList()
         return input.mapNotNull { clip ->
             val asset = byId[clip.assetId] ?: return@mapNotNull null
-            if (asset.durationMs <= 0 || clip.timelineStartMs >= projectDuration) return@mapNotNull null
-            val sourceStart = clip.sourceStartMs.coerceIn(0, (asset.durationMs - 1).coerceAtLeast(0))
-            val maxSourceDuration = asset.durationMs - sourceStart
-            val maxTimelineDuration = projectDuration - clip.timelineStartMs.coerceAtLeast(0)
-            val wanted = clip.durationMs.coerceAtMost(maxSourceDuration).coerceAtMost(maxTimelineDuration)
-            if (wanted <= 0) return@mapNotNull null
-            clip.copy(
-                timelineStartMs = clip.timelineStartMs.coerceAtLeast(0),
-                sourceStartMs = sourceStart,
-                sourceEndMs = sourceStart + wanted,
-                volume = clip.volume.coerceIn(0f, 1f)
-            )
+            AudioTimelineEditor.normalized(clip, asset.durationMs, projectDuration)
         }.sortedBy { it.timelineStartMs }
     }
 
@@ -881,6 +979,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioTimeline.setState(
             clips = audioClips,
             labelsByAssetId = audioAssets.associate { it.id to it.displayName },
+            assetDurationsById = audioAssets.associate { it.id to it.durationMs },
+            waveformsByAssetId = waveformsByAssetId,
+            snapPointsMs = videoSnapPoints(),
             selectedClipId = selectedAudioClipId,
             durationMs = timelineIndex.totalDurationMs,
             zoom = timelineZoom,
@@ -896,7 +997,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             binding.audioMuteButton,
             binding.audioVolumeDownButton,
             binding.audioVolumeUpButton,
-            binding.audioDeleteButton
+            binding.audioDeleteButton,
+            binding.audioSplitButton,
+            binding.audioFadeInButton,
+            binding.audioFadeOutButton
         ).forEach { view ->
             view.isEnabled = enabled
             view.alpha = if (enabled) 1f else 0.38f
@@ -905,14 +1009,41 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (selected == null) {
             binding.audioSelectionLabel.text = if (audioClips.isEmpty()) "No audio · add music or sound" else "Tap an audio clip to select"
             binding.audioMuteButton.text = "Mute"
+            binding.audioSplitButton.isEnabled = false
+            binding.audioSplitButton.alpha = 0.38f
             return
         }
 
         val asset = audioAssets.firstOrNull { it.id == selected.assetId }
         val name = asset?.displayName?.substringBeforeLast('.')?.take(20).orEmpty().ifBlank { "Audio" }
         val volumePercent = (selected.volume * 100).roundToInt()
-        binding.audioSelectionLabel.text = "$name · $volumePercent%${if (selected.muted) " · muted" else ""}"
+        val fadeIn = String.format("%.1f", selected.fadeInMs / 1000f)
+        val fadeOut = String.format("%.1f", selected.fadeOutMs / 1000f)
+        binding.audioSelectionLabel.text = "$name · $volumePercent% · in ${fadeIn}s · out ${fadeOut}s${if (selected.muted) " · muted" else ""}"
         binding.audioMuteButton.text = if (selected.muted) "Unmute" else "Mute"
+        val local = timelinePositionMs - selected.timelineStartMs
+        val canSplitAudio = local >= MIN_AUDIO_SPLIT_EDGE_MS && selected.durationMs - local >= MIN_AUDIO_SPLIT_EDGE_MS
+        binding.audioSplitButton.isEnabled = canSplitAudio
+        binding.audioSplitButton.alpha = if (canSplitAudio) 1f else 0.38f
+    }
+
+    private fun requestAudioWaveforms() {
+        audioAssets.forEach { asset ->
+            audioWaveformCache.request(Uri.parse(asset.uri), asset.durationMs) { waveform ->
+                if (waveform.isEmpty() || audioAssets.none { it.id == asset.id }) return@request
+                waveformsByAssetId = waveformsByAssetId + (asset.id to waveform)
+                if (!isFinishing && !isDestroyed) renderAudioState()
+            }
+        }
+    }
+
+    private fun videoSnapPoints(): List<Int> = buildList {
+        var cursor = 0
+        add(0)
+        clips.forEach { clip ->
+            cursor += clip.durationMs
+            add(cursor)
+        }
     }
 
     private fun pruneUnusedAudioAssets() {
@@ -990,6 +1121,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val MAX_ADDED_AUDIO = 12
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300
+        private const val MIN_AUDIO_SPLIT_EDGE_MS = 150
         private const val END_GUARD_MS = 35
         private const val SEEK_GUARD_MS = 700
         private const val HISTORY_LIMIT = 40

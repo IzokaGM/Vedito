@@ -49,21 +49,18 @@ Status: **Pending.**
 - Advanced color: HSL, curves, wheels, LUT.
 
 ### Stage 4 — Audio
-Status: **Patch 06 foundation in progress/completed after device verification.**
-Patch 06:
-- Audio import.
-- Audio asset/clip project model.
+Status: **Patch 07 pro foundation completed after device verification.**
+Completed through Patch 07:
+- Audio import and audio asset/clip project model.
 - Multiple overlapping audio preview.
-- Audio lane view.
+- Audio lane view and cached PCM waveforms.
 - Select, volume, mute, delete.
+- Drag/move with snapping, left/right trim, split.
+- Fade in/out preview + persistence.
+- Extract audio from selected video clip.
 - Save/reopen + undo/redo.
 
-Next audio milestones:
-- Waveform extraction/cache.
-- Drag/move audio clips.
-- Trim + split.
-- Fade in/out.
-- Extract audio from video.
+Next audio milestones after visual-core work:
 - Voice-over recording.
 - Audio ducking.
 - Noise reduction/voice enhancement.
@@ -142,21 +139,12 @@ Onboarding, project management polish, account/subscription if required, analyti
 
 ## Execution roadmap from current state
 
-### Patch 06 — Audio Core
-Current patch.
-Acceptance: import audio → layered playback → volume/mute/delete → undo/redo → save/reopen.
-
 ### Patch 07 — Audio Editing Pro Foundation
-Planned next unless device testing reveals Patch 06 regressions.
-- Cached waveform generation.
-- Drag/move audio clip on timeline with snapping.
-- Audio trim handles.
-- Audio split at playhead.
-- Fade in/out data model + preview.
-- Extract audio from selected video clip.
-- Keep all edits in undo/redo and persistence.
+Current patch.
+Acceptance: waveform → move/snap → trim → split → fades → extract audio → undo/redo → save/reopen.
 
 ### Patch 08 — Core Visual Transform Engine
+Next planned patch after Patch 07 device verification.
 - Per-clip transform model.
 - Crop/rotate/flip.
 - Scale/position/opacity.
