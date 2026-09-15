@@ -11,6 +11,10 @@ import android.view.Gravity
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +65,9 @@ import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.caption.SrtCodec
 import com.vedito.app.core.effect.EffectComposition
 import com.vedito.app.core.effect.EffectTimelineEditor
+import com.vedito.app.core.export.ExportPreset
+import com.vedito.app.core.export.ExportSettings
+import com.vedito.app.core.export.ExportSupport
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.tracking.MotionTrackingEngine
@@ -77,6 +84,7 @@ import com.vedito.app.core.visual.MaskChromaComposition
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
+import com.vedito.app.feature.export.VideoExportEngine
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.color.ColorGradeToolbarView
 import com.vedito.app.feature.editor.caption.CaptionToolbarView
@@ -106,6 +114,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var overlayPreview: OverlayPreviewController
     private lateinit var textPreview: TextPreviewController
     private lateinit var captionPreview: CaptionPreviewController
+    private lateinit var exportEngine: VideoExportEngine
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -143,6 +152,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var pendingCaptionEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingEffectEditSnapshot: EditorHistory.Snapshot? = null
     private var addingOverlay = false
+    private var pendingExportSettings: ExportSettings? = null
+    private var exportDialog: AlertDialog? = null
+    private var exportProgressBar: ProgressBar? = null
+    private var exportProgressLabel: TextView? = null
 
     private val addVideoPicker = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_VIDEOS)
@@ -182,6 +195,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (uri != null) exportSrt(uri)
     }
 
+    private val exportVideoPicker = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("video/mp4")
+    ) { uri ->
+        val settings = pendingExportSettings
+        pendingExportSettings = null
+        if (uri != null && settings != null) startVideoExport(uri, settings)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureVeditoSystemBars()
@@ -195,6 +216,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioProbe = AudioProbe(this)
         audioPlayback = AudioPlaybackEngine(this)
         audioWaveformCache = AudioWaveformCache(this)
+        exportEngine = VideoExportEngine(this)
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)
         val loaded = projectId?.let(repository::find)
@@ -228,6 +250,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
         binding.projectTitle.text = project.title
         binding.backButton.setOnClickListener { finish() }
+        binding.exportVideoButton.setOnClickListener { showExportOptions() }
         binding.playPauseButton.setOnClickListener {
             if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
         }
@@ -549,6 +572,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::textPreview.isInitialized) textPreview.release()
         if (::captionPreview.isInitialized) captionPreview.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
+        if (::exportEngine.isInitialized) exportEngine.close()
+        exportDialog?.dismiss()
         super.onDestroy()
     }
 
@@ -3123,6 +3148,147 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun pruneUnusedAssets() {
         val used = clips.mapTo(mutableSetOf()) { it.assetId }
         assets = assets.filter { it.id in used }
+    }
+
+    private fun showExportOptions() {
+        if (::exportEngine.isInitialized && exportEngine.isRunning()) {
+            Toast.makeText(this, "Export already running", Toast.LENGTH_SHORT).show()
+            return
+        }
+        saveProject()
+        val report = ExportSupport.inspect(project)
+        if (!report.canExport) {
+            Toast.makeText(this, "Add a video clip before exporting", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val presets = ExportPreset.values()
+        AlertDialog.Builder(this)
+            .setTitle("Export video")
+            .setItems(presets.map { it.label }.toTypedArray()) { _, which ->
+                val settings = ExportSettings(preset = presets[which])
+                if (report.warnings.isEmpty()) {
+                    launchVideoExportDocument(settings)
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Patch 19 export foundation")
+                        .setMessage(report.warnings.joinToString("\n\n"))
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Continue") { _, _ -> launchVideoExportDocument(settings) }
+                        .show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun launchVideoExportDocument(settings: ExportSettings) {
+        saveProject()
+        pendingExportSettings = settings
+        val safeTitle = project.title
+            .replace(Regex("[^A-Za-z0-9._ -]"), "_")
+            .trim()
+            .ifBlank { "vedito" }
+        exportVideoPicker.launch("$safeTitle-${settings.preset.name.lowercase()}.mp4")
+    }
+
+    private fun startVideoExport(uri: Uri, settings: ExportSettings) {
+        saveProject()
+        previewPlayer.pause()
+        audioPlayback.pause()
+        showExportProgressDialog()
+        binding.exportVideoButton.isEnabled = false
+        binding.exportVideoButton.alpha = 0.45f
+        binding.root.keepScreenOn = true
+
+        val started = exportEngine.export(project, uri, settings, object : VideoExportEngine.Listener {
+            override fun onProgress(percent: Int, message: String) {
+                if (isFinishing || isDestroyed) return
+                exportProgressBar?.progress = percent
+                exportProgressLabel?.text = "$message · $percent%"
+            }
+
+            override fun onCompleted(uri: Uri, plan: com.vedito.app.core.export.ExportPlan, elapsedMs: Long) {
+                if (isFinishing || isDestroyed) return
+                finishExportUi()
+                val seconds = (elapsedMs / 1_000f).coerceAtLeast(0f)
+                AlertDialog.Builder(this@EditorActivity)
+                    .setTitle("Export complete")
+                    .setMessage("${plan.width}×${plan.height} · ${plan.frameRate} fps · ${String.format("%.1f", seconds)}s render time")
+                    .setNegativeButton("Done", null)
+                    .setPositiveButton("Open") { _, _ ->
+                        val intent = Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "video/mp4")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        runCatching { startActivity(intent) }
+                            .onFailure { Toast.makeText(this@EditorActivity, "Video saved", Toast.LENGTH_SHORT).show() }
+                    }
+                    .show()
+            }
+
+            override fun onCancelled() {
+                if (isFinishing || isDestroyed) return
+                finishExportUi()
+                Toast.makeText(this@EditorActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onError(message: String, throwable: Throwable?) {
+                if (isFinishing || isDestroyed) return
+                finishExportUi()
+                AlertDialog.Builder(this@EditorActivity)
+                    .setTitle("Export failed")
+                    .setMessage(message)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        })
+        if (!started) {
+            finishExportUi()
+            Toast.makeText(this, "Unable to start export", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showExportProgressDialog() {
+        exportDialog?.dismiss()
+        val density = resources.displayMetrics.density
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val horizontal = (22f * density).roundToInt()
+            val vertical = (14f * density).roundToInt()
+            setPadding(horizontal, vertical, horizontal, vertical)
+        }
+        val label = TextView(this).apply {
+            text = "Preparing export · 0%"
+            setTextColor(getColor(R.color.vedito_text))
+            textSize = 13f
+        }
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            isIndeterminate = false
+        }
+        content.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        content.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (10f * density).roundToInt()).apply {
+            topMargin = (12f * density).roundToInt()
+        })
+        exportProgressLabel = label
+        exportProgressBar = progress
+        exportDialog = AlertDialog.Builder(this)
+            .setTitle("Exporting Vedito project")
+            .setView(content)
+            .setCancelable(false)
+            .setNegativeButton("Cancel") { _, _ -> exportEngine.cancel() }
+            .create()
+            .also { it.show() }
+    }
+
+    private fun finishExportUi() {
+        exportDialog?.dismiss()
+        exportDialog = null
+        exportProgressBar = null
+        exportProgressLabel = null
+        binding.exportVideoButton.isEnabled = true
+        binding.exportVideoButton.alpha = 1f
+        binding.root.keepScreenOn = false
     }
 
     private fun saveProject() {

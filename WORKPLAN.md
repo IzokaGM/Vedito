@@ -96,14 +96,20 @@ Pending:
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**Pending — critical.**
-- Deterministic off-screen compositor.
-- Preview ≈ export.
-- H.264/H.265 + AAC/MP4.
-- 720p/1080p/2K/4K where supported.
-- FPS/bitrate controls, hardware encoding.
-- Progress/cancel/recovery, thermal/memory/storage handling.
-- Production reverse decode/audio and freeze/speed rendering consume the same timing model as preview.
+**In progress — Patch 19 establishes the first real MP4 export foundation.**
+Completed in Patch 19 foundation:
+- Deterministic off-screen software fallback compositor consuming canonical project state.
+- Real H.264 + AAC/MP4 output.
+- 720p/1080p @ 30fps presets + hardware surface video encoding.
+- Timing parity foundation for trim/speed/reverse/freeze through shared source mapping.
+- Main visual/keyframe/stabilization/mask/chroma/color/effects/transition + overlay/text/caption frame composition.
+- Progress/cancel/error UI and partial-file cleanup.
+
+Pending:
+- Audible source/audio-track mixer and retimed/reverse audio policy.
+- Production decoder/GPU compositor replacing MediaMetadataRetriever/software fallback.
+- H.265, 2K/4K where supported, FPS/bitrate controls.
+- Recovery/resume, thermal/memory/storage preflight and long-project optimization.
 
 ## Stage 8 — AI suite
 **Pending after core/export maturity.**
@@ -174,14 +180,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Draggable preview reticle, point navigation and undo/redo.
   - Stabilization state/preview with strength + auto-crop.
   - Tracking-safe trim/split/speed/reverse semantics, schema v17 persistence.
-- **Patch 18:** Advanced Color / GPU Compositor Foundation — current patch.
+- **Patch 18:** Advanced Color / GPU Compositor Foundation — locked after CI/device verification.
   - Per-main-clip exposure/contrast/saturation/temperature/tint/fade.
   - Deterministic Android-free `ColorGradeEngine`.
   - API 31+ hardware color preview and API 33+ chroma+color RenderEffect chaining.
   - Android-free `FrameCompositionBuilder` resolving canonical transform/mask/chroma/color/effect/transition render state.
   - Schema v18 persistence + undo/redo.
-- **Patch 19:** Production Render / Export Engine Foundation — next.
-- **Patch 20+:** advanced color shaders/audio/text, AI/templates/cloud.
+- **Patch 19:** Production Render / Export Engine Foundation — current patch.
+  - Android-free export plan/capability contract.
+  - Real 720p/1080p H.264 + AAC MP4 save path.
+  - Correctness-first off-screen software compositor using canonical timing/render state.
+  - EGL/GLES encoder-surface bridge, progress/cancel/error handling and partial-file cleanup.
+  - Known limit: AAC is valid but silent until the export audio mixer lands.
+- **Patch 20:** Export Audio Mixer / Reliability Foundation — next.
+- **Patch 21+:** production GPU decode/compositor, H.265/4K, advanced color/audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

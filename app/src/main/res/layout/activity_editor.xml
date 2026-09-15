@@ -52,15 +52,18 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/exportVideoButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_badge"
+            android:clickable="true"
+            android:focusable="true"
             android:fontFamily="sans-serif-medium"
-            android:paddingStart="9dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="9dp"
-            android:paddingBottom="6dp"
-            android:text="EDIT"
+            android:paddingStart="11dp"
+            android:paddingTop="7dp"
+            android:paddingEnd="11dp"
+            android:paddingBottom="7dp"
+            android:text="EXPORT"
             android:textColor="@color/vedito_accent"
             android:textSize="10sp" />
     </LinearLayout>

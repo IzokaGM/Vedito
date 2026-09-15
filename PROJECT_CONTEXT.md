@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.18.0 / versionCode 18**
+- Current patch: **0.19.0 / versionCode 19**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -66,7 +66,7 @@ Current external CI concept:
 - `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v17.
+- `core/projects/ProjectRepository.kt` — persistence, schema v18.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -86,6 +86,10 @@ Important modules:
 - `core/effect/EffectTimelineEditor.kt`, `EffectComposition.kt` — timed effect editing plus renderer-independent effect/transition state.
 - `feature/editor/effect/*` — FX timeline, controls and native preview composition.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
+- `core/export/ExportPlan.kt` / `ExportSupport.kt` — Android-free export sizing/capability contract.
+- `feature/export/SoftwareFrameComposer.kt` — deterministic off-screen software fallback consuming canonical project/composition state.
+- `feature/export/CodecInputSurface.kt` — EGL/GLES blit bridge into the video encoder input Surface.
+- `feature/export/VideoExportEngine.kt` / `Mp4MuxSink.kt` — H.264/AAC MediaCodec + MediaMuxer export pipeline, progress/cancel/error lifecycle.
 
 ## Completed progression
 - Native clean rewrite and standalone APK.
@@ -105,6 +109,7 @@ Important modules:
 - Patch 16: renderer-independent main-clip rectangle/ellipse mask state with size/position/feather/invert, real native occlusion preview, chroma-key state with tolerance/softness/spill, API 33+ RuntimeShader chroma preview, undo/redo and schema v16 persistence.
 - Patch 17: renderer-independent main-clip motion tracking anchors + stabilization state, draggable manual reticle workflow, deterministic interpolation/inverse-translation stabilization preview, trim/split/speed/reverse timing preservation, undo/redo and schema v17 persistence.
 - Patch 18: renderer-independent per-clip color grade state, deterministic color-matrix math, API 31+ hardware color preview, chroma+color RenderEffect chaining, and Android-free `FrameCompositionBuilder` for preview/export convergence; schema v18 persistence.
+- Patch 19: first real off-screen MP4 export foundation. H.264 video is encoded from a deterministic composed frame pipeline that reuses timing/keyframe/stabilization/mask/chroma/color/effect/transition plus overlay/text/caption project state. 720p/1080p @ 30fps presets, valid AAC track, progress/cancel/error handling and SAF save flow are integrated.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -124,7 +129,7 @@ Important modules:
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Production export compositor.
+- Production-grade GPU decoder/compositor performance, audible audio mixing and export recovery/resume. Patch 19 provides the first real MP4 export foundation.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -142,12 +147,22 @@ Important modules:
 - `FrameCompositionBuilder` resolves canonical frame state (source time, evaluated/stabilized transform, mask, chroma, color, timed effects, transition and ordered render stages) without Android dependencies. Future off-screen export must consume this resolved state.
 - This is compositor architecture + live color foundation, not the final off-screen GPU renderer.
 
+## Patch 19 behavior/limits
+- Export is real: SAF destination → off-screen frame composition → H.264 MediaCodec surface encode → AAC + MP4 MediaMuxer.
+- Presets: 720p / 1080p at 30 fps with deterministic canvas sizing.
+- Main source timing uses the same `ClipTimeMap`/`FrameCompositionBuilder`, so trim, uniform speed, reverse and freeze source-frame mapping are not reimplemented in UI code.
+- Export software fallback composes transforms/keyframes/stabilization, mask, CPU chroma, color matrix, timed effects/transitions, image/video overlays, free text and captions before handing frames to GLES/MediaCodec.
+- Export can be cancelled; partial output is deleted on cancel/failure. UI reports progress/errors and keeps the screen awake while rendering.
+- **Important foundation limit:** Patch 19 creates a valid silent AAC track. Audible source-video audio and independent audio-timeline mixing are intentionally the next export milestone; the export UI warns before starting.
+- Frame acquisition currently uses `MediaMetadataRetriever` and a software compositor. It prioritizes deterministic correctness over long-project speed; production decoder/GPU optimization remains required.
+- Project persistence schema stays v18 because Patch 19 adds no new saved project fields.
+
 ## Next milestone
-**Patch 19 — Production Render / Export Engine Foundation**
-- deterministic off-screen render graph consuming `FrameCompositionBuilder`,
-- first real H.264/AAC MP4 export path,
-- preview/export timing parity for trims/speed/freeze/basic visual state,
-- progress/cancel/error handling foundation,
-- keep advanced HSL/curves/LUT and richer shader passes expandable without duplicating project state.
+**Patch 20 — Export Audio Mixer / Reliability Foundation**
+- audible source-video + audio-track render/mix,
+- volume/mute/fade parity,
+- retimed/reverse/freeze audio policy,
+- export preflight/storage checks and stronger long-project reliability,
+- keep the same MP4/export state contract rather than creating a second renderer.
 
 See `WORKPLAN.md` for the full roadmap.
