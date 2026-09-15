@@ -41,6 +41,8 @@ import com.vedito.app.core.model.TransitionSpec
 import com.vedito.app.core.model.VideoEffectKind
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.MaskSpec
+import com.vedito.app.core.model.MotionTrackSpec
+import com.vedito.app.core.model.StabilizationSpec
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
@@ -58,6 +60,7 @@ import com.vedito.app.core.effect.EffectComposition
 import com.vedito.app.core.effect.EffectTimelineEditor
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.overlay.OverlayTimelineEditor
+import com.vedito.app.core.tracking.MotionTrackingEngine
 import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
 import com.vedito.app.core.timeline.FrameTimecode
@@ -79,6 +82,7 @@ import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
 import com.vedito.app.feature.editor.text.TextPreviewController
 import com.vedito.app.feature.editor.text.TextToolbarView
 import com.vedito.app.feature.editor.timing.TimingToolbarView
+import com.vedito.app.feature.editor.tracking.TrackingStabilizationToolbarView
 import com.vedito.app.feature.editor.visual.MaskChromaToolbarView
 import com.vedito.app.feature.editor.visual.TransformToolbarView
 import com.vedito.app.ui.applySystemBarInsets
@@ -268,6 +272,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.maskChromaToolbar.onAction = ::handleMaskChromaAction
+        binding.trackingToolbar.onAction = ::handleTrackingAction
+        binding.trackingOverlay.onAnchorCommitted = { x, y -> upsertTrackingAnchor(x, y) }
         binding.timingToolbar.onAction = ::handleTimingAction
         binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
         binding.overlayPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -693,7 +699,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             ClipTimeMap.timelineOffsetForSourcePosition(clip, sourcePositionMs)
         }
         previewPlayer.setVisualTransform(
-            KeyframeEngine.evaluate(clip.transform, clip.keyframes, timelineOffset, clip.durationMs)
+            MotionTrackingEngine.applyStabilization(
+                base = KeyframeEngine.evaluate(clip.transform, clip.keyframes, timelineOffset, clip.durationMs),
+                track = clip.motionTrack,
+                stabilization = clip.stabilization,
+                localTimeMs = timelineOffset,
+                durationMs = clip.durationMs
+            )
         )
         applyMaskChromaPreview(clip)
         previewPlayer.configureTiming(
@@ -789,6 +801,118 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val supported = selectedOverlayClipId == null && selectedTextClipId == null && selectedCaptionSegmentId == null
         val clip = if (supported) selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } else null
         binding.maskChromaToolbar.setState(clip?.mask, clip?.chromaKey, clip != null)
+        updateTrackingUi()
+    }
+
+    private fun handleTrackingAction(action: TrackingStabilizationToolbarView.Action) {
+        if (selectedOverlayClipId != null || selectedTextClipId != null || selectedCaptionSegmentId != null) return
+        val clip = selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } ?: return
+        val local = visualLocalTimeMs(clip)
+        when (action) {
+            TrackingStabilizationToolbarView.Action.TRACK_TOGGLE -> {
+                if (clip.motionTrack.enabled) {
+                    mutateSelectedTracking { it.copy(motionTrack = it.motionTrack.copy(enabled = false)) }
+                } else {
+                    val evaluated = MotionTrackingEngine.evaluate(clip.motionTrack, local, clip.durationMs)
+                    val track = if (clip.motionTrack.points.isEmpty()) {
+                        MotionTrackingEngine.upsert(clip.motionTrack, local, evaluated?.x ?: 0.5f, evaluated?.y ?: 0.5f, clip.durationMs)
+                    } else {
+                        clip.motionTrack.copy(enabled = true)
+                    }
+                    mutateSelectedTracking { it.copy(motionTrack = track) }
+                }
+            }
+            TrackingStabilizationToolbarView.Action.ADD_ANCHOR -> {
+                val point = MotionTrackingEngine.evaluate(clip.motionTrack, local, clip.durationMs)
+                upsertTrackingAnchor(point?.x ?: 0.5f, point?.y ?: 0.5f)
+            }
+            TrackingStabilizationToolbarView.Action.REMOVE_ANCHOR -> mutateSelectedTracking { current ->
+                current.copy(motionTrack = MotionTrackingEngine.removeNearest(current.motionTrack, local, current.durationMs))
+            }
+            TrackingStabilizationToolbarView.Action.PREVIOUS_ANCHOR -> {
+                MotionTrackingEngine.previousPointTime(clip.motionTrack, local, clip.durationMs)?.let { target ->
+                    setTimelinePosition((timelineIndex.startOf(clip.id) + target).coerceIn(0, timelineIndex.totalDurationMs))
+                    seekPreviewToTimeline(timelinePositionMs)
+                }
+            }
+            TrackingStabilizationToolbarView.Action.NEXT_ANCHOR -> {
+                MotionTrackingEngine.nextPointTime(clip.motionTrack, local, clip.durationMs)?.let { target ->
+                    setTimelinePosition((timelineIndex.startOf(clip.id) + target).coerceIn(0, timelineIndex.totalDurationMs))
+                    seekPreviewToTimeline(timelinePositionMs)
+                }
+            }
+            TrackingStabilizationToolbarView.Action.STABILIZE_TOGGLE -> mutateSelectedTracking { current ->
+                current.copy(stabilization = current.stabilization.copy(enabled = !current.stabilization.enabled))
+            }
+            TrackingStabilizationToolbarView.Action.STRENGTH -> mutateSelectedTracking { current ->
+                val strength = cycleFloatPreset(current.stabilization.strength, STABILIZATION_STRENGTH_PRESETS)
+                current.copy(stabilization = current.stabilization.copy(strength = strength))
+            }
+            TrackingStabilizationToolbarView.Action.AUTO_CROP -> mutateSelectedTracking { current ->
+                current.copy(stabilization = current.stabilization.copy(autoCrop = !current.stabilization.autoCrop))
+            }
+            TrackingStabilizationToolbarView.Action.RESET -> mutateSelectedTracking { current ->
+                current.copy(motionTrack = MotionTrackSpec(), stabilization = StabilizationSpec())
+            }
+        }
+    }
+
+    private fun upsertTrackingAnchor(x: Float, y: Float) {
+        val id = selectedClipId ?: return
+        val clip = clips.firstOrNull { it.id == id } ?: return
+        if (timelineIndex.locate(timelinePositionMs)?.clip?.id != id) return
+        val local = visualLocalTimeMs(clip)
+        mutateSelectedTracking { current ->
+            current.copy(
+                motionTrack = MotionTrackingEngine.upsert(
+                    current.motionTrack,
+                    local,
+                    x,
+                    y,
+                    current.durationMs
+                )
+            )
+        }
+    }
+
+    private fun mutateSelectedTracking(change: (Clip) -> Clip) {
+        val id = selectedClipId ?: return
+        val index = clips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = clips[index]
+        val changed = change(current)
+        val updated = changed.copy(
+            motionTrack = MotionTrackingEngine.normalize(changed.motionTrack, changed.durationMs),
+            stabilization = MotionTrackingEngine.normalize(changed.stabilization)
+        )
+        if (updated == current) return
+        val before = snapshot()
+        pauseForVisualEdit()
+        clips = clips.toMutableList().apply { this[index] = updated }
+        refreshTimelineIndex()
+        history.record(before)
+        if (timelineIndex.locate(timelinePositionMs)?.clip?.id == id) {
+            previewPlayer.setVisualTransform(effectiveTransformForClip(updated, timelinePositionMs))
+        }
+        updateSelectionUi()
+        updateTrackingUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun updateTrackingUi() {
+        if (!::binding.isInitialized) return
+        val supported = selectedOverlayClipId == null && selectedTextClipId == null && selectedCaptionSegmentId == null
+        val clip = if (supported) selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } else null
+        val local = clip?.let(::visualLocalTimeMs) ?: 0
+        binding.trackingToolbar.setState(clip?.motionTrack, clip?.stabilization, local, clip != null)
+        val editable = clip != null && timelineIndex.locate(timelinePositionMs)?.clip?.id == clip.id
+        binding.trackingOverlay.render(
+            track = clip?.motionTrack ?: MotionTrackSpec(),
+            localTimeMs = local,
+            durationMs = clip?.durationMs ?: 0,
+            editable = editable
+        )
     }
 
     private fun handleTimingAction(action: TimingToolbarView.Action) {
@@ -1250,6 +1374,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateSelectionUi()
         updateVisualToolbar()
         updateMaskChromaToolbar()
+        updateTrackingUi()
         val active = timelineIndex.locate(timelinePositionMs)?.clip
         if (active != null) previewPlayer.setVisualTransform(effectiveTransformForClip(active, timelinePositionMs))
         applyCanvasPreviewLayout(active)
@@ -1263,7 +1388,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun effectiveTransformForClip(clip: Clip, timelineMs: Int): ClipTransform {
         val local = (timelineMs - timelineIndex.startOf(clip.id)).coerceIn(0, clip.durationMs)
-        return KeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs)
+        return MotionTrackingEngine.applyStabilization(
+            base = KeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs),
+            track = clip.motionTrack,
+            stabilization = clip.stabilization,
+            localTimeMs = local,
+            durationMs = clip.durationMs
+        )
     }
 
     private fun mutateCanvasSettings(change: (CanvasSettings) -> CanvasSettings) {
@@ -1356,6 +1487,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         } else if (::previewPlayer.isInitialized) {
             previewPlayer.setChromaKey(ChromaKeySpec())
             binding.maskPreviewLayer.render(MaskSpec(), canvasSettings.background.argb)
+            binding.trackingOverlay.render(MotionTrackSpec(), 0, 0, false)
         }
     }
 
@@ -1720,6 +1852,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateEffectUi()
         updateVisualToolbar()
         updateMaskChromaToolbar()
+        updateTrackingUi()
         updateTimingToolbar()
     }
 
@@ -1744,6 +1877,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             previewPlayer.setVisualTransform(effectiveTransformForClip(activeClip, timelinePositionMs))
             applyMaskChromaPreview(activeClip)
         }
+        updateTrackingUi()
         if (::previewPlayer.isInitialized && !previewPlayer.isPlaying()) {
             updateVisualToolbar()
             updateMaskChromaToolbar()
@@ -2997,6 +3131,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private val CHROMA_TOLERANCE_PRESETS = floatArrayOf(0.12f, 0.18f, 0.22f, 0.30f, 0.40f)
     private val CHROMA_SOFTNESS_PRESETS = floatArrayOf(0.04f, 0.08f, 0.12f, 0.20f, 0.30f)
     private val CHROMA_SPILL_PRESETS = floatArrayOf(0f, 0.15f, 0.30f, 0.50f, 0.75f)
+    private val STABILIZATION_STRENGTH_PRESETS = floatArrayOf(0.35f, 0.50f, 0.65f, 0.80f, 1.0f)
     private val CHROMA_KEY_COLORS = intArrayOf(
         MaskChromaToolbarView.KEY_GREEN,
         MaskChromaToolbarView.KEY_BLUE,

@@ -1,31 +1,32 @@
-# Vedito Patch 16 — Masks / Chroma Foundation
+# Vedito Patch 17 — Motion Tracking / Stabilization Foundation
 
-Version: **0.16.0** (`versionCode 16`)  
+Version: **0.17.0** (`versionCode 17`)  
 Package: **`com.vedito.app`**
 
 ## Added
-- Renderer-independent `MaskSpec` on every main video clip.
-- Rectangle + ellipse masks, position, size, invert and feather state.
-- Real native mask preview layer that occludes hidden main-video areas while keeping overlay/text layers above it.
-- Renderer-independent `ChromaKeySpec` with enable, key color, tolerance, softness and spill controls.
-- Real RuntimeShader chroma preview on Android API 33+; the same project state is preserved on older Android for the future export/GPU compositor.
-- Mask/chroma edits are covered by undo/redo, duplicate/split/freeze semantics and project save/reopen.
-- Project persistence schema **v16**.
+- Renderer-independent `MotionTrackSpec` + timed `TrackingPoint` model on each main clip.
+- Manual motion tracking workflow: enable tracking, add/remove anchors, jump previous/next point, and drag the reticle directly on preview.
+- Deterministic linear interpolation between tracking anchors via `MotionTrackingEngine`.
+- Stabilization state with enable/disable, strength presets and auto-crop option.
+- Real preview stabilization foundation: inverse translation from the tracking path plus deterministic auto-crop scale.
+- Tracking data follows trim, split, speed change and reverse semantics; freeze bakes the current stabilized transform and clears live tracking.
+- Undo/redo + project save/reopen support.
+- Project persistence schema **v17**.
 
 ## Current foundation limits
-- Patch 16 controls masks/chroma for the **main video clip**. Overlay/PIP mask/chroma will reuse the same state model in a later visual-compositor pass.
-- Mask feather is a lightweight native preview approximation; production export will use the deterministic GPU mask compositor.
-- Chroma live preview uses Android RuntimeShader on API 33+. API 26–32 keep/edit/persist the parameters, but final production preview parity will arrive with the shared GPU compositor.
-- No eyedropper color sampling yet; current key presets are green, blue and magenta.
+- Tracking is **manual-anchor first**. There is no automatic detector/optical-flow pass yet; future assistance must write the same `TrackingPoint` model.
+- Stabilization is a deterministic translation foundation, not final production gyro/optical-flow stabilization.
+- Tracking currently belongs to main clips. Overlay/object attachment and detector-assisted tracking are later milestones.
+- Final export must consume the same `MotionTrackingEngine` state instead of implementing separate timing math.
 
 ## Acceptance path
-1. Open/import a video project.
-2. Select a main clip.
-3. Cycle Mask Off → Rectangle → Ellipse and resize/move it.
-4. Toggle invert and cycle feather.
-5. Enable Chroma; cycle key color/tolerance/softness/spill.
-6. Undo/redo several mask/chroma changes.
-7. Split or duplicate the clip and confirm state follows the new clip.
-8. Close/reopen the project and confirm the state persists.
+1. Open a project and select the active main clip.
+2. Turn **Track On**. A reticle appears in preview.
+3. Drag the reticle on the object at the current playhead; move the playhead and add/drag more anchors.
+4. Use previous/next point navigation and confirm the reticle interpolates while scrubbing.
+5. Enable **Stabilize**, cycle strength and auto-crop, then scrub/play to confirm framing compensation.
+6. Undo/redo anchor and stabilization edits.
+7. Split, trim, change speed and reverse the tracked clip; confirm tracking state remains valid.
+8. Close/reopen the project and confirm anchors/stabilization persist.
 
 No workflow `.yml/.yaml` files are included in this patch ZIP.

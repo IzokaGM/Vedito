@@ -166,6 +166,31 @@ data class ChromaKeySpec(
     val spill: Float = 0.15f
 )
 
+
+enum class TrackingPointSource {
+    MANUAL,
+    ASSISTED
+}
+
+data class TrackingPoint(
+    val timeMs: Int,
+    val x: Float,
+    val y: Float,
+    val confidence: Float = 1f,
+    val source: TrackingPointSource = TrackingPointSource.MANUAL
+)
+
+data class MotionTrackSpec(
+    val enabled: Boolean = false,
+    val points: List<TrackingPoint> = emptyList()
+)
+
+data class StabilizationSpec(
+    val enabled: Boolean = false,
+    val strength: Float = 0.65f,
+    val autoCrop: Boolean = true
+)
+
 data class Clip(
     val id: String,
     val assetId: String,
@@ -176,7 +201,9 @@ data class Clip(
     val timing: ClipTiming = ClipTiming(),
     val transitionOut: TransitionSpec = TransitionSpec(),
     val mask: MaskSpec = MaskSpec(),
-    val chromaKey: ChromaKeySpec = ChromaKeySpec()
+    val chromaKey: ChromaKeySpec = ChromaKeySpec(),
+    val motionTrack: MotionTrackSpec = MotionTrackSpec(),
+    val stabilization: StabilizationSpec = StabilizationSpec()
 ) {
     val sourceDurationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)

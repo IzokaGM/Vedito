@@ -4,6 +4,7 @@ import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.keyframe.KeyframeEngine
+import com.vedito.app.core.tracking.MotionTrackingEngine
 
 object TimelineMath {
     data class Location(
@@ -67,7 +68,13 @@ object TimelineMath {
                 timing = original.timing.copy(freezeSourceMs = freezeSource)
             )
             val normalized = ClipTimeMap.normalizeTiming(clip)
-                .let { it.copy(keyframes = KeyframeEngine.normalize(it.keyframes, it.durationMs)) }
+                .let {
+                    it.copy(
+                        keyframes = KeyframeEngine.normalize(it.keyframes, it.durationMs),
+                        motionTrack = MotionTrackingEngine.normalize(it.motionTrack, it.durationMs),
+                        stabilization = MotionTrackingEngine.normalize(it.stabilization)
+                    )
+                }
             if (normalized.timing.mode == ClipPlaybackMode.FREEZE && normalized.durationMs <= 0) null else normalized
         }
     }

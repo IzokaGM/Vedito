@@ -24,6 +24,10 @@ import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.MaskShape
 import com.vedito.app.core.model.MaskSpec
 import com.vedito.app.core.model.ChromaKeySpec
+import com.vedito.app.core.model.MotionTrackSpec
+import com.vedito.app.core.model.StabilizationSpec
+import com.vedito.app.core.model.TrackingPoint
+import com.vedito.app.core.model.TrackingPointSource
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
@@ -38,6 +42,7 @@ import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.core.visual.MaskChromaComposition
+import com.vedito.app.core.tracking.MotionTrackingEngine
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.text.TextTimelineEditor
@@ -172,9 +177,15 @@ class ProjectRepository(context: Context) {
                         timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0)),
                         transitionOut = parseTransition(clip.optJSONObject("transitionOut")),
                         mask = parseMask(clip.optJSONObject("mask")),
-                        chromaKey = parseChromaKey(clip.optJSONObject("chromaKey"))
+                        chromaKey = parseChromaKey(clip.optJSONObject("chromaKey")),
+                        motionTrack = parseMotionTrack(clip.optJSONObject("motionTrack")),
+                        stabilization = parseStabilization(clip.optJSONObject("stabilization"))
                     ).let { parsed ->
-                        parsed.copy(keyframes = KeyframeEngine.normalize(parsed.keyframes, parsed.durationMs))
+                        parsed.copy(
+                            keyframes = KeyframeEngine.normalize(parsed.keyframes, parsed.durationMs),
+                            motionTrack = MotionTrackingEngine.normalize(parsed.motionTrack, parsed.durationMs),
+                            stabilization = MotionTrackingEngine.normalize(parsed.stabilization)
+                        )
                     }
                 )
             }
@@ -240,6 +251,40 @@ class ProjectRepository(context: Context) {
                 tolerance = json.optDouble("tolerance", 0.22).toFloat(),
                 softness = json.optDouble("softness", 0.10).toFloat(),
                 spill = json.optDouble("spill", 0.15).toFloat()
+            )
+        )
+    }
+
+    private fun parseMotionTrack(json: JSONObject?): MotionTrackSpec {
+        if (json == null) return MotionTrackSpec()
+        val array = json.optJSONArray("points") ?: JSONArray()
+        val points = buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val x = item.optDouble("x", Double.NaN).toFloat()
+                val y = item.optDouble("y", Double.NaN).toFloat()
+                if (!x.isFinite() || !y.isFinite()) continue
+                add(
+                    TrackingPoint(
+                        timeMs = item.optInt("timeMs", 0).coerceAtLeast(0),
+                        x = x,
+                        y = y,
+                        confidence = item.optDouble("confidence", 1.0).toFloat(),
+                        source = enumValueOrDefault(item.optString("source"), TrackingPointSource.MANUAL)
+                    )
+                )
+            }
+        }
+        return MotionTrackSpec(enabled = json.optBoolean("enabled", points.isNotEmpty()), points = points)
+    }
+
+    private fun parseStabilization(json: JSONObject?): StabilizationSpec {
+        if (json == null) return StabilizationSpec()
+        return MotionTrackingEngine.normalize(
+            StabilizationSpec(
+                enabled = json.optBoolean("enabled", false),
+                strength = json.optDouble("strength", 0.65).toFloat(),
+                autoCrop = json.optBoolean("autoCrop", true)
             )
         )
     }
@@ -483,6 +528,8 @@ class ProjectRepository(context: Context) {
                     .put("transitionOut", transitionToJson(clip.transitionOut))
                     .put("mask", maskToJson(clip.mask))
                     .put("chromaKey", chromaKeyToJson(clip.chromaKey))
+                    .put("motionTrack", motionTrackToJson(clip.motionTrack, clip.durationMs))
+                    .put("stabilization", stabilizationToJson(clip.stabilization))
             )
         }
 
@@ -657,6 +704,32 @@ class ProjectRepository(context: Context) {
             .put("spill", safe.spill.toDouble())
     }
 
+    private fun motionTrackToJson(track: MotionTrackSpec, durationMs: Int): JSONObject {
+        val safe = MotionTrackingEngine.normalize(track, durationMs)
+        val points = JSONArray()
+        safe.points.forEach { point ->
+            points.put(
+                JSONObject()
+                    .put("timeMs", point.timeMs)
+                    .put("x", point.x.toDouble())
+                    .put("y", point.y.toDouble())
+                    .put("confidence", point.confidence.toDouble())
+                    .put("source", point.source.name)
+            )
+        }
+        return JSONObject()
+            .put("enabled", safe.enabled)
+            .put("points", points)
+    }
+
+    private fun stabilizationToJson(stabilization: StabilizationSpec): JSONObject {
+        val safe = MotionTrackingEngine.normalize(stabilization)
+        return JSONObject()
+            .put("enabled", safe.enabled)
+            .put("strength", safe.strength.toDouble())
+            .put("autoCrop", safe.autoCrop)
+    }
+
     private fun parseTransformKeyframes(json: JSONObject?): TransformKeyframeSet {
         if (json == null) return TransformKeyframeSet()
 
@@ -759,6 +832,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 16
+        private const val SCHEMA_VERSION = 17
     }
 }

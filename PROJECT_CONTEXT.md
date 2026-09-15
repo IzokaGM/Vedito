@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.16.0 / versionCode 16**
+- Current patch: **0.17.0 / versionCode 17**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -48,6 +48,9 @@ Current external CI concept:
 - `ClipTiming`: speed, playback mode (FORWARD/REVERSE/FREEZE), freeze source frame/duration.
 - `ClipTimeMap`: canonical source↔timeline time mapping. Future speed curves/export must build on this rather than duplicating timing math in UI.
 - `TransformKeyframeSet` / `FloatKeyframe` / `KeyframeEasing`: local-timeline transform animation state for scale/position/rotation/opacity.
+- `MotionTrackSpec` / `TrackingPoint`: local-timeline tracking anchors for main clips; future detector assistance must populate the same model.
+- `StabilizationSpec`: renderer-independent stabilization enable/strength/auto-crop state.
+- `MotionTrackingEngine`: canonical tracking interpolation + trim/split/speed/reverse remapping + deterministic stabilization transform compensation.
 - `KeyframeEngine`: canonical interpolation/easing evaluator shared by preview now and future export; keyframes are local to their owning clip/layer.
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
 - `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
@@ -63,11 +66,13 @@ Current external CI concept:
 - `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v15.
+- `core/projects/ProjectRepository.kt` — persistence, schema v17.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
 - `core/keyframe/KeyframeEngine.kt` — renderer-independent transform keyframe interpolation, easing, timing remap/split helpers.
+- `core/tracking/MotionTrackingEngine.kt` — manual/assisted tracking anchors, timing remap and stabilization evaluator shared concept for preview/export.
+- `feature/editor/tracking/*` — draggable tracking reticle + tracking/stabilization controls.
 - `feature/editor/timeline/TimelineScrubberView.kt` — scrub/zoom/trim/reorder UI, timing-aware trim.
 - `feature/editor/player/PreviewPlayer.kt` — forward speed preview plus seek-driven reverse/freeze playback foundation.
 - `feature/editor/timing/TimingToolbarView.kt` — speed/freeze/reverse controls.
@@ -98,6 +103,7 @@ Important modules:
 - Patch 14: timed FX track, real Warm/Cool/Vignette/Dream/Grain native preview overlays, effect intensity, Fade-Black/Flash/Wipe clip-boundary transitions, renderer-independent `EffectComposition`, transition-safe split/duplicate semantics, undo/redo and schema v14 persistence.
 - Patch 15: renderer-independent transform keyframes for main clips + overlays, deterministic interpolation/easing, real preview evaluation, keyframe navigation/edit controls, timeline-safe split/trim/speed handling, undo/redo and schema v15 persistence.
 - Patch 16: renderer-independent main-clip rectangle/ellipse mask state with size/position/feather/invert, real native occlusion preview, chroma-key state with tolerance/softness/spill, API 33+ RuntimeShader chroma preview, undo/redo and schema v16 persistence.
+- Patch 17: renderer-independent main-clip motion tracking anchors + stabilization state, draggable manual reticle workflow, deterministic interpolation/inverse-translation stabilization preview, trim/split/speed/reverse timing preservation, undo/redo and schema v17 persistence.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -116,21 +122,23 @@ Important modules:
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
-- Tracking/stabilization; keyframes exist for clip/overlay transform only, with advanced graphs/property coverage still pending.
+- Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
-## Patch 16 behavior/limits
-- Main video clips persist rectangle/ellipse mask shape, center, size, feather and invert state.
-- `MaskPreviewView` gives a real native occlusion preview beneath overlay/text/caption layers. Feather is a lightweight preview approximation; export must use the same `MaskSpec` in the future GPU compositor.
-- Chroma key persists enabled/key-color/tolerance/softness/spill. RuntimeShader live keying is active on API 33+; API 26–32 preserve/edit the model until the shared GPU compositor replaces this preview path.
-- Patch 16 intentionally targets main clips first; overlay/PIP mask/chroma will reuse the same renderer-independent model later.
+## Patch 17 behavior/limits
+- Main clips persist `MotionTrackSpec` with local-timeline `TrackingPoint`s plus `StabilizationSpec`.
+- `MotionTrackingEngine` is the canonical renderer-independent evaluator for point normalization/interpolation, split/trim/speed/reverse remapping and stabilization transform compensation.
+- Manual workflow is real: enable tracking, add/remove anchors, jump between anchors and drag the reticle directly in preview at the current playhead.
+- Stabilization preview applies inverse tracked motion with adjustable strength and optional deterministic auto-crop scale. This is a foundation, not final optical-flow/gyro stabilization.
+- Future detector assistance must populate the same tracking points; export must consume the same engine/model rather than duplicate timing math.
+- Main clips only in Patch 17. Overlay/object attachment tracking remains pending.
 
 ## Next milestone
-**Patch 17 — Motion Tracking / Stabilization Foundation**
-- renderer-independent tracking data/anchor model,
-- manual tracking anchor workflow suitable for later detector assistance,
-- stabilization parameter/state foundation,
-- persistence + undo/redo + export-compatible data ownership.
+**Patch 18 — Advanced Color / GPU Compositor Foundation**
+- shared GPU-oriented composition interfaces for preview/export convergence,
+- base color-adjustment state suitable for LUT/HSL/curves expansion,
+- preserve existing effects/mask/chroma/tracking ownership without preview-only duplicate state,
+- persistence + deterministic renderer data flow.
 
 See `WORKPLAN.md` for the full roadmap.

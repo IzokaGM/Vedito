@@ -120,6 +120,13 @@
                 android:layout_height="match_parent"
                 android:clipChildren="true"
                 android:clipToPadding="true" />
+
+            <com.vedito.app.feature.editor.tracking.TrackingOverlayView
+                android:id="@+id/trackingOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                android:contentDescription="Motion tracking anchor" />
         </FrameLayout>
 
         <TextView
@@ -211,6 +218,13 @@
             android:layout_height="42dp"
             android:layout_marginTop="2dp"
             android:contentDescription="Mask and chroma key controls" />
+
+        <com.vedito.app.feature.editor.tracking.TrackingStabilizationToolbarView
+            android:id="@+id/trackingToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Motion tracking and stabilization controls" />
 
         <com.vedito.app.feature.editor.timing.TimingToolbarView
             android:id="@+id/timingToolbar"

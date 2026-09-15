@@ -39,20 +39,22 @@ Next:
 - Later speed curves built on `ClipTimeMap`.
 
 ## Stage 3 — Pro visual editing
-**In progress — keyframes + main-clip masks/chroma foundation completed through Patch 16.**
+**In progress — keyframes, masks/chroma and manual motion tracking/stabilization foundation completed through Patch 17.**
 Completed:
 - Renderer-independent clip/overlay transform keyframes.
 - Linear/Ease In/Ease Out/Ease In-Out/Hold interpolation.
 - Real preview evaluation plus timeline-safe split/trim/speed handling.
 - Main-clip rectangle/ellipse mask state with feather/invert and native preview.
 - Main-clip chroma-key parameter model with API 33+ RuntimeShader preview foundation.
+- Main-clip manual motion anchor model + draggable reticle workflow.
+- Deterministic tracking interpolation and translation-based stabilization preview with strength/auto-crop state.
 
 Pending:
 - Advanced keyframe graph/custom Bezier editor and broader property coverage.
 - Overlay/PIP masks, freeform masks and mask keyframes.
 - Production shared GPU chroma compositor + eyedropper sampling.
-- Motion/object tracking.
-- Stabilization, motion blur.
+- Automatic detector/optical-flow tracking and overlay attachment tracking.
+- Production stabilization and motion blur.
 - HSL/curves/wheels/LUT.
 
 ## Stage 4 — Audio
@@ -160,13 +162,18 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Scale/position/rotation/opacity interpolation with Linear/Ease In/Ease Out/Ease In-Out/Hold.
   - Real preview evaluation plus add/remove/prev/next/easing controls.
   - Timeline-safe split/trim/uniform-speed remapping, persistence and undo/redo.
-- **Patch 16:** Masks / Chroma Foundation — current patch.
+- **Patch 16:** Masks / Chroma Foundation — locked after CI/device verification.
   - Renderer-independent main-clip rectangle/ellipse mask + feather/invert state.
   - Native mask occlusion preview beneath overlays/text.
   - Chroma-key enabled/color/tolerance/softness/spill model.
   - API 33+ RuntimeShader live chroma preview, schema v16 persistence + undo/redo.
-- **Patch 17:** Motion Tracking / Stabilization Foundation — next.
-- **Patch 18+:** advanced color/GPU compositor/export, advanced audio/text, AI/templates/cloud.
+- **Patch 17:** Motion Tracking / Stabilization Foundation — current patch.
+  - Renderer-independent manual tracking points + interpolation.
+  - Draggable preview reticle, point navigation and undo/redo.
+  - Stabilization state/preview with strength + auto-crop.
+  - Tracking-safe trim/split/speed/reverse semantics, schema v17 persistence.
+- **Patch 18:** Advanced Color / GPU Compositor Foundation — next.
+- **Patch 19+:** production export, advanced audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

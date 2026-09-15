@@ -5,6 +5,9 @@ import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.TransitionSpec
 import com.vedito.app.core.keyframe.KeyframeEngine
+import com.vedito.app.core.tracking.MotionTrackingEngine
+import com.vedito.app.core.model.MotionTrackSpec
+import com.vedito.app.core.model.StabilizationSpec
 import com.vedito.app.core.model.TransformKeyframeSet
 import java.util.UUID
 
@@ -61,12 +64,20 @@ object TimelineEditor {
             leftDurationMs = pair.first.durationMs,
             rightDurationMs = pair.second.durationMs
         )
+        val splitTracking = MotionTrackingEngine.split(
+            track = original.motionTrack,
+            splitLocalMs = location.offsetMs,
+            leftDurationMs = pair.first.durationMs,
+            rightDurationMs = pair.second.durationMs
+        )
         val normalizedPair = pair.first.copy(
             transitionOut = TransitionSpec(),
-            keyframes = splitKeyframes.first
+            keyframes = splitKeyframes.first,
+            motionTrack = splitTracking.first
         ) to pair.second.copy(
             transitionOut = original.transitionOut,
-            keyframes = splitKeyframes.second
+            keyframes = splitKeyframes.second,
+            motionTrack = splitTracking.second
         )
         val next = clips.toMutableList().apply {
             removeAt(location.clipIndex)
@@ -98,7 +109,10 @@ object TimelineEditor {
         val safeStart = startMs.coerceIn(0, max - 1)
         val safeEnd = endMs.coerceIn(safeStart + 1, max)
         val trimmed = current.copy(sourceStartMs = safeStart, sourceEndMs = safeEnd)
-        val remapped = trimmed.copy(keyframes = KeyframeEngine.remapForClipTrim(current, trimmed))
+        val remapped = trimmed.copy(
+            keyframes = KeyframeEngine.remapForClipTrim(current, trimmed),
+            motionTrack = MotionTrackingEngine.remapForClipTrim(current, trimmed)
+        )
         return clips.toMutableList().apply {
             this[index] = remapped
         }
@@ -145,8 +159,9 @@ object TimelineEditor {
         if (clip.timing.speed == safe) return clips
         val retimed = clip.copy(timing = clip.timing.copy(speed = safe))
         val keyframes = KeyframeEngine.rescaleDuration(clip.keyframes, clip.durationMs, retimed.durationMs)
+        val tracking = MotionTrackingEngine.rescaleDuration(clip.motionTrack, clip.durationMs, retimed.durationMs)
         return clips.toMutableList().apply {
-            this[index] = retimed.copy(keyframes = keyframes)
+            this[index] = retimed.copy(keyframes = keyframes, motionTrack = tracking)
         }
     }
 
@@ -157,7 +172,10 @@ object TimelineEditor {
         if (clip.timing.mode == ClipPlaybackMode.FREEZE) return clips
         val nextMode = if (clip.timing.mode == ClipPlaybackMode.REVERSE) ClipPlaybackMode.FORWARD else ClipPlaybackMode.REVERSE
         return clips.toMutableList().apply {
-            this[index] = clip.copy(timing = clip.timing.copy(mode = nextMode))
+            this[index] = clip.copy(
+                timing = clip.timing.copy(mode = nextMode),
+                motionTrack = MotionTrackingEngine.reverseTimeline(clip.motionTrack, clip.durationMs)
+            )
         }
     }
 
@@ -166,16 +184,24 @@ object TimelineEditor {
         val location = TimelineMath.locate(clips, playheadMs) ?: return null
         val source = ClipTimeMap.sourcePositionAtTimelineOffset(location.clip, location.offsetMs)
         val safeSource = source.coerceIn(location.clip.sourceStartMs, (location.clip.sourceEndMs - 1).coerceAtLeast(location.clip.sourceStartMs))
-        val freezeTransform = KeyframeEngine.evaluate(
-            location.clip.transform,
-            location.clip.keyframes,
-            location.offsetMs,
-            location.clip.durationMs
+        val freezeTransform = MotionTrackingEngine.applyStabilization(
+            base = KeyframeEngine.evaluate(
+                location.clip.transform,
+                location.clip.keyframes,
+                location.offsetMs,
+                location.clip.durationMs
+            ),
+            track = location.clip.motionTrack,
+            stabilization = location.clip.stabilization,
+            localTimeMs = location.offsetMs,
+            durationMs = location.clip.durationMs
         )
         val freeze = location.clip.copy(
             id = UUID.randomUUID().toString(),
             transform = freezeTransform,
             keyframes = TransformKeyframeSet(),
+            motionTrack = MotionTrackSpec(),
+            stabilization = StabilizationSpec(),
             transitionOut = TransitionSpec(),
             timing = ClipTiming(
                 speed = 1f,
