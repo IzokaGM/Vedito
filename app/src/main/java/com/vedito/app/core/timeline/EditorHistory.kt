@@ -5,6 +5,8 @@ import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
+import com.vedito.app.core.model.OverlayAsset
+import com.vedito.app.core.model.OverlayClip
 import java.util.ArrayDeque
 
 /**
@@ -18,9 +20,12 @@ class EditorHistory(private val capacity: Int = 40) {
         val clips: List<Clip>,
         val audioAssets: List<AudioAsset>,
         val audioClips: List<AudioClip>,
+        val overlayAssets: List<OverlayAsset>,
+        val overlayClips: List<OverlayClip>,
         val canvasSettings: CanvasSettings,
         val selectedClipId: String?,
         val selectedAudioClipId: String?,
+        val selectedOverlayClipId: String?,
         val playheadMs: Int
     )
 

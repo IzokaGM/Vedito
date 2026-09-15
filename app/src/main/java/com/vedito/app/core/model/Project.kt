@@ -110,6 +110,36 @@ data class Clip(
         }
 }
 
+
+
+enum class OverlayMediaType {
+    IMAGE,
+    VIDEO
+}
+
+data class OverlayAsset(
+    val id: String,
+    val uri: String,
+    val displayName: String,
+    val type: OverlayMediaType,
+    val durationMs: Int = 0,
+    val width: Int = 0,
+    val height: Int = 0
+)
+
+data class OverlayClip(
+    val id: String,
+    val assetId: String,
+    val timelineStartMs: Int,
+    val durationMs: Int,
+    val sourceStartMs: Int = 0,
+    val zIndex: Int = 0,
+    val transform: ClipTransform = ClipTransform(scale = 0.45f, fitMode = ClipFitMode.FIT)
+) {
+    val timelineEndMs: Int
+        get() = timelineStartMs + durationMs
+}
+
 data class AudioAsset(
     val id: String,
     val uri: String,
@@ -143,13 +173,17 @@ data class Project(
     val clips: List<Clip> = emptyList(),
     val audioAssets: List<AudioAsset> = emptyList(),
     val audioClips: List<AudioClip> = emptyList(),
+    val overlayAssets: List<OverlayAsset> = emptyList(),
+    val overlayClips: List<OverlayClip> = emptyList(),
     val canvasSettings: CanvasSettings = CanvasSettings(),
     val playheadMs: Int = 0,
     val selectedClipId: String? = null,
     val selectedAudioClipId: String? = null,
+    val selectedOverlayClipId: String? = null,
     val timelineZoom: Float = 1f,
     val timelineViewportStartMs: Int = 0
 ) {
     fun asset(id: String): MediaAsset? = assets.firstOrNull { it.id == id }
     fun audioAsset(id: String): AudioAsset? = audioAssets.firstOrNull { it.id == id }
+    fun overlayAsset(id: String): OverlayAsset? = overlayAssets.firstOrNull { it.id == id }
 }

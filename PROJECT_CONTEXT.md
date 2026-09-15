@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.9.0 / versionCode 9**
+- Current patch: **0.10.0 / versionCode 10**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -48,10 +48,12 @@ Current external CI concept:
 - `ClipTiming`: speed, playback mode (FORWARD/REVERSE/FREEZE), freeze source frame/duration.
 - `ClipTimeMap`: canonical source↔timeline time mapping. Future speed curves/export must build on this rather than duplicating timing math in UI.
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
+- `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
+- `OverlayComposition`: renderer-independent active-layer resolver shared concept for preview now and deterministic export later.
 - `Project`: video/audio assets and clips, canvas, playhead, selection, zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v9.
+- `core/projects/ProjectRepository.kt` — persistence, schema v10.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -60,6 +62,8 @@ Important modules:
 - `feature/editor/timing/TimingToolbarView.kt` — speed/freeze/reverse controls.
 - `core/visual/VisualTransformMath.kt` / `TransformToolbarView.kt` — visual transforms/canvas.
 - `core/audio/*` + `feature/editor/audio/AudioTimelineView.kt` — audio foundation.
+- `core/overlay/OverlayComposition.kt`, `OverlayTimelineEditor.kt` — renderer-independent PIP layer resolution and timing edits.
+- `feature/editor/overlay/OverlayTimelineView.kt`, `OverlayPreviewController.kt` — overlay editing/preview implementation.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
 ## Completed progression
@@ -71,20 +75,21 @@ Important modules:
 - Audio import, overlapping lanes, waveform, move/trim/split/fades, extract-audio for normal 1× forward clips.
 - Per-clip scale/position/rotate/flip/opacity/crop/fit-fill + project canvas ratio/background.
 - Patch 09: timing model, uniform speed, reverse foundation, freeze clips, timing persistence and timing-aware timeline math.
+- Patch 10: independent image/video overlay/PIP clips, z-order, drag/trim, shared transforms, synchronized preview composition, undo/redo and persistence.
 
-## Patch 09 behavior/limits
-- Speed presets: 0.5× to 2×. Timeline duration is source duration / speed.
-- Reverse project semantics are real and persistent. Preview is seek-driven and intentionally mutes source audio; production reverse decoding/audio belongs in the render engine later.
-- Freeze inserts a real timeline hold clip at the playhead; default 2s.
-- External audio remains on project timeline and continues across retimed/reverse/freeze video.
-- Extract-audio is deliberately disabled on retimed/reverse/freeze video because current AudioClip model does not yet time-stretch/reverse extracted audio.
-- Speed curves are not yet exposed; `ClipTimeMap` is the groundwork for the later curve mapper.
+## Patch 10 behavior/limits
+- Overlay image/video clips are independent from the base ripple video timeline and are positioned by absolute project time.
+- Image overlays default to 3s; video overlays default to available source/project duration.
+- Overlay timeline supports selection, move and edge trim. Layer order is persistent through `zIndex`.
+- Selected overlay reuses `ClipTransform` controls (scale/position/rotate/flip/opacity/crop/fit-fill).
+- Preview resolves active layers through `OverlayComposition`; this model is intentionally Android-View-free so the future export compositor can consume the same state.
+- Video overlay audio is muted in preview. Overlay speed/reverse/keyframes and production overlay audio routing are later work.
+- Compact UI displays three visual lanes at a time via modulo lane placement; z-order itself can exceed three.
 
 ## Explicitly not completed
 - Speed curves UI/easing.
 - Production reverse decoder or reversed source audio.
 - Freeze duration UI beyond default insertion.
-- Visual overlay/PIP tracks.
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Text/captions.
 - Effects/transitions/color grading.
@@ -93,10 +98,10 @@ Important modules:
 - AI/templates/cloud/account/subscription.
 
 ## Next milestone
-**Patch 10 — Visual Overlay / PIP Tracks**
-- independent timed image/video overlay layers,
-- z-order/layer selection,
-- overlay transform state,
-- preview composition architecture that can later feed deterministic export.
+**Patch 11 — Text & Caption Track Foundation**
+- timed text layers with transform/style state,
+- text track selection/editing,
+- renderer-independent text composition state for preview/export reuse,
+- persistence + undo/redo; caption/SRT/auto-caption features build on this foundation later.
 
 See `WORKPLAN.md` for the full roadmap.

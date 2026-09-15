@@ -1,20 +1,9 @@
 # Vedito AI Handoff
 
-Before changing code, read in this order:
-1. `PROJECT_CONTEXT.md`
-2. `WORKPLAN.md`
-3. `README.md`
+Before editing this repo, read **`PROJECT_CONTEXT.md`** then **`WORKPLAN.md`**.
 
-Current version: **0.9.0** / schema **v9**.
-Current milestone: **Patch 09 — Speed / Freeze / Reverse Foundation**.
-Next planned milestone: **Patch 10 — Visual Overlay / PIP Tracks**.
+Current state: **Patch 10 / v0.10.0 / schema v10**. Native Android/Kotlin, package `com.vedito.app`. The current milestone added independent image/video visual overlay/PIP tracks, z-order, timed overlay editing, shared transforms, preview composition and persistence.
 
-Non-negotiable rules:
-- Native Android/Kotlin, package `com.vedito.app`.
-- Do not copy Cutrim/CapCut source/assets.
-- Do not regress to React Native/Metro.
-- Patch ZIP extracts at repo root and contains no `.yml/.yaml`.
-- Workflow files, if needed, are delivered separately.
-- Preserve project migrations and undo/redo semantics.
-- `ClipTimeMap` is canonical timing math; future speed curves/export should extend/reuse it.
-- No fake UI: controls must perform real behavior.
+Do not rewrite the native foundation, do not copy Cutrim/CapCut source/assets, do not put workflow YAML inside patch ZIPs, and do not create preview-only state that cannot later be consumed by the deterministic export compositor.
+
+Next planned milestone: **Patch 11 — Text & Caption Track Foundation**, unless the owner changes priority.

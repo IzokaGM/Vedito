@@ -12,6 +12,9 @@ import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
+import com.vedito.app.core.model.OverlayAsset
+import com.vedito.app.core.model.OverlayClip
+import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.visual.VisualTransformMath
 import org.json.JSONArray
@@ -54,6 +57,8 @@ class ProjectRepository(context: Context) {
         val clips = parseClips(item, assets, id)
         val audioAssets = parseAudioAssets(item)
         val audioClips = parseAudioClips(item, audioAssets)
+        val overlayAssets = parseOverlayAssets(item)
+        val overlayClips = parseOverlayClips(item, overlayAssets)
 
         return Project(
             id = id,
@@ -63,10 +68,13 @@ class ProjectRepository(context: Context) {
             clips = clips,
             audioAssets = audioAssets,
             audioClips = audioClips,
+            overlayAssets = overlayAssets,
+            overlayClips = overlayClips,
             canvasSettings = parseCanvasSettings(item),
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
             selectedAudioClipId = item.optString("selectedAudioClipId").takeIf { it.isNotBlank() },
+            selectedOverlayClipId = item.optString("selectedOverlayClipId").takeIf { it.isNotBlank() },
             timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
             timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
@@ -226,6 +234,55 @@ class ProjectRepository(context: Context) {
         }
     }
 
+    private fun parseOverlayAssets(item: JSONObject): List<OverlayAsset> {
+        val array = item.optJSONArray("overlayAssets") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val asset = array.optJSONObject(index) ?: continue
+                val id = asset.optString("id")
+                val uri = asset.optString("uri")
+                if (id.isBlank() || uri.isBlank()) continue
+                add(
+                    OverlayAsset(
+                        id = id,
+                        uri = uri,
+                        displayName = asset.optString("displayName").ifBlank { "Overlay" },
+                        type = enumValueOrDefault(asset.optString("type"), OverlayMediaType.IMAGE),
+                        durationMs = asset.optInt("durationMs", 0).coerceAtLeast(0),
+                        width = asset.optInt("width", 0).coerceAtLeast(0),
+                        height = asset.optInt("height", 0).coerceAtLeast(0)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseOverlayClips(item: JSONObject, assets: List<OverlayAsset>): List<OverlayClip> {
+        val assetIds = assets.mapTo(mutableSetOf()) { it.id }
+        val array = item.optJSONArray("overlayClips") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val clip = array.optJSONObject(index) ?: continue
+                val id = clip.optString("id")
+                val assetId = clip.optString("assetId")
+                if (id.isBlank() || assetId !in assetIds) continue
+                val duration = clip.optInt("durationMs", 0).coerceAtLeast(0)
+                if (duration <= 0) continue
+                add(
+                    OverlayClip(
+                        id = id,
+                        assetId = assetId,
+                        timelineStartMs = clip.optInt("timelineStartMs", 0).coerceAtLeast(0),
+                        durationMs = duration,
+                        sourceStartMs = clip.optInt("sourceStartMs", 0).coerceAtLeast(0),
+                        zIndex = clip.optInt("zIndex", 0).coerceAtLeast(0),
+                        transform = parseClipTransform(clip.optJSONObject("transform"))
+                    )
+                )
+            }
+        }
+    }
+
     private fun toJson(project: Project): JSONObject {
         val assetArray = JSONArray()
         project.assets.forEach { asset ->
@@ -281,6 +338,34 @@ class ProjectRepository(context: Context) {
             )
         }
 
+        val overlayAssetArray = JSONArray()
+        project.overlayAssets.forEach { asset ->
+            overlayAssetArray.put(
+                JSONObject()
+                    .put("id", asset.id)
+                    .put("uri", asset.uri)
+                    .put("displayName", asset.displayName)
+                    .put("type", asset.type.name)
+                    .put("durationMs", asset.durationMs)
+                    .put("width", asset.width)
+                    .put("height", asset.height)
+            )
+        }
+
+        val overlayClipArray = JSONArray()
+        project.overlayClips.forEach { clip ->
+            overlayClipArray.put(
+                JSONObject()
+                    .put("id", clip.id)
+                    .put("assetId", clip.assetId)
+                    .put("timelineStartMs", clip.timelineStartMs)
+                    .put("durationMs", clip.durationMs)
+                    .put("sourceStartMs", clip.sourceStartMs)
+                    .put("zIndex", clip.zIndex)
+                    .put("transform", transformToJson(clip.transform))
+            )
+        }
+
         return JSONObject()
             .put("schemaVersion", SCHEMA_VERSION)
             .put("id", project.id)
@@ -290,6 +375,8 @@ class ProjectRepository(context: Context) {
             .put("clips", clipArray)
             .put("audioAssets", audioAssetArray)
             .put("audioClips", audioClipArray)
+            .put("overlayAssets", overlayAssetArray)
+            .put("overlayClips", overlayClipArray)
             .put(
                 "canvas",
                 JSONObject()
@@ -299,6 +386,7 @@ class ProjectRepository(context: Context) {
             .put("playheadMs", project.playheadMs)
             .put("selectedClipId", project.selectedClipId ?: "")
             .put("selectedAudioClipId", project.selectedAudioClipId ?: "")
+            .put("selectedOverlayClipId", project.selectedOverlayClipId ?: "")
             .put("timelineZoom", project.timelineZoom.toDouble())
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
@@ -338,6 +426,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 9
+        private const val SCHEMA_VERSION = 10
     }
 }

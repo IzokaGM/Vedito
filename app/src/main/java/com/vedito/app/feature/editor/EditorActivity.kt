@@ -28,8 +28,12 @@ import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
+import com.vedito.app.core.model.OverlayAsset
+import com.vedito.app.core.model.OverlayClip
+import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
+import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
 import com.vedito.app.core.timeline.FrameTimecode
@@ -39,6 +43,7 @@ import com.vedito.app.core.timeline.TimelineMath
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
+import com.vedito.app.feature.editor.overlay.OverlayPreviewController
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
 import com.vedito.app.feature.editor.timing.TimingToolbarView
 import com.vedito.app.feature.editor.visual.TransformToolbarView
@@ -56,6 +61,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var audioProbe: AudioProbe
     private lateinit var audioPlayback: AudioPlaybackEngine
     private lateinit var audioWaveformCache: AudioWaveformCache
+    private lateinit var overlayPreview: OverlayPreviewController
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -64,10 +70,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var clips: List<Clip> = emptyList()
     private var audioAssets: List<AudioAsset> = emptyList()
     private var audioClips: List<AudioClip> = emptyList()
+    private var overlayAssets: List<OverlayAsset> = emptyList()
+    private var overlayClips: List<OverlayClip> = emptyList()
     private var canvasSettings = CanvasSettings()
     private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
     private var selectedAudioClipId: String? = null
+    private var selectedOverlayClipId: String? = null
     private var timelinePositionMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
@@ -79,6 +88,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var pendingReorderSnapshot: EditorHistory.Snapshot? = null
     private var replaceTargetClipId: String? = null
     private var pendingAudioEditSnapshot: EditorHistory.Snapshot? = null
+    private var pendingOverlayEditSnapshot: EditorHistory.Snapshot? = null
+    private var addingOverlay = false
 
     private val addVideoPicker = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_VIDEOS)
@@ -98,6 +109,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) addAudio(uris.take(MAX_ADDED_AUDIO))
+    }
+
+    private val addOverlayPicker = registerForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_OVERLAYS)
+    ) { uris ->
+        if (uris.isNotEmpty()) addOverlays(uris.take(MAX_ADDED_OVERLAYS))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,10 +143,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = TimelineMath.sanitized(project.clips, assets)
         audioAssets = project.audioAssets
         audioClips = sanitizeAudioClips(project.audioClips)
+        overlayAssets = project.overlayAssets
+        overlayClips = sanitizeOverlayClips(project.overlayClips)
         canvasSettings = project.canvasSettings
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = project.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
+        selectedOverlayClipId = project.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = project.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         timelineZoom = project.timelineZoom.coerceIn(1f, 8f)
@@ -160,9 +180,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioFadeInButton.setOnClickListener { cycleSelectedAudioFade(inward = true) }
         binding.audioFadeOutButton.setOnClickListener { cycleSelectedAudioFade(inward = false) }
         binding.extractAudioButton.setOnClickListener { extractAudioFromSelectedVideo() }
+        binding.addOverlayButton.setOnClickListener {
+            if (!addingOverlay) addOverlayPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        }
+        binding.overlayBackButton.setOnClickListener { changeOverlayLayer(-1) }
+        binding.overlayFrontButton.setOnClickListener { changeOverlayLayer(1) }
+        binding.overlayDeleteButton.setOnClickListener { deleteSelectedOverlay() }
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.timingToolbar.onAction = ::handleTimingAction
         binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
+        binding.overlayPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
+        }
         binding.audioTimeline.onAudioClipSelected = { id ->
             selectedAudioClipId = id
             updateAudioUi()
@@ -182,9 +211,31 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (finished) finishAudioGestureEdit()
         }
 
+        binding.overlayTimeline.onOverlaySelected = { id ->
+            selectedOverlayClipId = id
+            updateOverlayUi()
+            updateVisualToolbar()
+            renderOverlayState()
+            saveProject()
+        }
+        binding.overlayTimeline.onOverlayEditStart = { id ->
+            selectedOverlayClipId = id
+            pendingOverlayEditSnapshot = snapshot()
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+        }
+        binding.overlayTimeline.onOverlayChanged = { edited, finished ->
+            overlayClips = overlayClips.map { if (it.id == edited.id) edited else it }
+            selectedOverlayClipId = edited.id
+            if (finished) finishOverlayGestureEdit() else renderOverlayState()
+        }
+
         binding.timeline.onClipSelected = { id ->
             selectedClipId = id
+            selectedOverlayClipId = null
             updateSelectionUi()
+            updateOverlayUi()
             updateVisualToolbar()
             updateTimingToolbar()
             saveProject()
@@ -219,6 +270,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             timelineViewportStartMs = startMs
             updateZoomUi()
             renderAudioState()
+            renderOverlayState()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -226,6 +278,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         previewPlayer = PreviewPlayer(this, binding.previewTexture, this)
+        overlayPreview = OverlayPreviewController(this, binding.overlayPreviewLayer)
+        overlayPreview.onOverlaySelected = { id ->
+            selectedOverlayClipId = id
+            updateOverlayUi()
+            updateVisualToolbar()
+            renderOverlayState()
+            saveProject()
+        }
         applyCanvasPreviewLayout()
         audioPlayback.setTimeline(audioAssets, audioClips)
         renderTimelineState(restoreViewport = true)
@@ -248,6 +308,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::audioProbe.isInitialized) audioProbe.release()
         if (::audioPlayback.isInitialized) audioPlayback.release()
         if (::audioWaveformCache.isInitialized) audioWaveformCache.release()
+        if (::overlayPreview.isInitialized) overlayPreview.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
@@ -334,6 +395,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.playPauseButton.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
         binding.playPauseButton.contentDescription = if (isPlaying) "Pause" else "Play"
         if (isPlaying) audioPlayback.playFrom(timelinePositionMs) else audioPlayback.pause()
+        if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, isPlaying, selectedOverlayClipId)
     }
 
     override fun onError(message: String) {
@@ -491,16 +553,16 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun handleVisualAction(action: TransformToolbarView.Action) {
         when (action) {
-            TransformToolbarView.Action.SCALE_DOWN -> mutateSelectedTransform { it.copy(scale = it.scale - 0.1f) }
-            TransformToolbarView.Action.SCALE_UP -> mutateSelectedTransform { it.copy(scale = it.scale + 0.1f) }
-            TransformToolbarView.Action.MOVE_LEFT -> mutateSelectedTransform { it.copy(positionX = it.positionX - POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_RIGHT -> mutateSelectedTransform { it.copy(positionX = it.positionX + POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_UP -> mutateSelectedTransform { it.copy(positionY = it.positionY - POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_DOWN -> mutateSelectedTransform { it.copy(positionY = it.positionY + POSITION_STEP) }
-            TransformToolbarView.Action.ROTATE_90 -> mutateSelectedTransform { it.copy(rotationDegrees = it.rotationDegrees + 90f) }
-            TransformToolbarView.Action.FLIP_HORIZONTAL -> mutateSelectedTransform { it.copy(flipHorizontal = !it.flipHorizontal) }
-            TransformToolbarView.Action.FLIP_VERTICAL -> mutateSelectedTransform { it.copy(flipVertical = !it.flipVertical) }
-            TransformToolbarView.Action.OPACITY_CYCLE -> mutateSelectedTransform {
+            TransformToolbarView.Action.SCALE_DOWN -> mutateActiveTransform { it.copy(scale = it.scale - 0.1f) }
+            TransformToolbarView.Action.SCALE_UP -> mutateActiveTransform { it.copy(scale = it.scale + 0.1f) }
+            TransformToolbarView.Action.MOVE_LEFT -> mutateActiveTransform { it.copy(positionX = it.positionX - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_RIGHT -> mutateActiveTransform { it.copy(positionX = it.positionX + POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_UP -> mutateActiveTransform { it.copy(positionY = it.positionY - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_DOWN -> mutateActiveTransform { it.copy(positionY = it.positionY + POSITION_STEP) }
+            TransformToolbarView.Action.ROTATE_90 -> mutateActiveTransform { it.copy(rotationDegrees = it.rotationDegrees + 90f) }
+            TransformToolbarView.Action.FLIP_HORIZONTAL -> mutateActiveTransform { it.copy(flipHorizontal = !it.flipHorizontal) }
+            TransformToolbarView.Action.FLIP_VERTICAL -> mutateActiveTransform { it.copy(flipVertical = !it.flipVertical) }
+            TransformToolbarView.Action.OPACITY_CYCLE -> mutateActiveTransform {
                 val next = when {
                     it.opacity > 0.76f -> 0.75f
                     it.opacity > 0.51f -> 0.50f
@@ -509,14 +571,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 }
                 it.copy(opacity = next)
             }
-            TransformToolbarView.Action.FIT_TOGGLE -> mutateSelectedTransform {
+            TransformToolbarView.Action.FIT_TOGGLE -> mutateActiveTransform {
                 it.copy(fitMode = if (it.fitMode == ClipFitMode.FIT) ClipFitMode.FILL else ClipFitMode.FIT)
             }
-            TransformToolbarView.Action.CROP_LEFT -> mutateSelectedTransform { it.copy(cropLeft = nextCropEdge(it.cropLeft)) }
-            TransformToolbarView.Action.CROP_RIGHT -> mutateSelectedTransform { it.copy(cropRight = nextCropEdge(it.cropRight)) }
-            TransformToolbarView.Action.CROP_TOP -> mutateSelectedTransform { it.copy(cropTop = nextCropEdge(it.cropTop)) }
-            TransformToolbarView.Action.CROP_BOTTOM -> mutateSelectedTransform { it.copy(cropBottom = nextCropEdge(it.cropBottom)) }
-            TransformToolbarView.Action.CROP_RESET -> mutateSelectedTransform {
+            TransformToolbarView.Action.CROP_LEFT -> mutateActiveTransform { it.copy(cropLeft = nextCropEdge(it.cropLeft)) }
+            TransformToolbarView.Action.CROP_RIGHT -> mutateActiveTransform { it.copy(cropRight = nextCropEdge(it.cropRight)) }
+            TransformToolbarView.Action.CROP_TOP -> mutateActiveTransform { it.copy(cropTop = nextCropEdge(it.cropTop)) }
+            TransformToolbarView.Action.CROP_BOTTOM -> mutateActiveTransform { it.copy(cropBottom = nextCropEdge(it.cropBottom)) }
+            TransformToolbarView.Action.CROP_RESET -> mutateActiveTransform {
                 it.copy(cropLeft = 0f, cropTop = 0f, cropRight = 0f, cropBottom = 0f)
             }
             TransformToolbarView.Action.CANVAS_RATIO -> mutateCanvasSettings {
@@ -529,11 +591,32 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 val next = values[(values.indexOf(it.background) + 1) % values.size]
                 it.copy(background = next)
             }
-            TransformToolbarView.Action.RESET_TRANSFORM -> mutateSelectedTransform { ClipTransform() }
+            TransformToolbarView.Action.RESET_TRANSFORM -> mutateActiveTransform { if (selectedOverlayClipId != null) ClipTransform(scale = 0.45f) else ClipTransform() }
         }
     }
 
-    private fun mutateSelectedTransform(change: (ClipTransform) -> ClipTransform) {
+    private fun mutateActiveTransform(change: (ClipTransform) -> ClipTransform) {
+        val overlayId = selectedOverlayClipId
+        if (overlayId != null) {
+            val index = overlayClips.indexOfFirst { it.id == overlayId }
+            if (index < 0) return
+            val before = snapshot()
+            val current = overlayClips[index]
+            val nextTransform = VisualTransformMath.normalize(change(current.transform))
+            if (nextTransform == current.transform) return
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+            overlayClips = overlayClips.toMutableList().apply { this[index] = current.copy(transform = nextTransform) }
+            history.record(before)
+            renderOverlayState()
+            updateOverlayUi()
+            updateVisualToolbar()
+            saveProject()
+            updateHistoryUi()
+            return
+        }
+
         val id = selectedClipId ?: return
         val index = clips.indexOfFirst { it.id == id }
         if (index < 0) return
@@ -541,14 +624,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val current = clips[index]
         val nextTransform = VisualTransformMath.normalize(change(current.transform))
         if (nextTransform == current.transform) return
-
         previewPlayer.pause()
         audioPlayback.pause()
         playbackClipId = null
         clips = clips.toMutableList().apply { this[index] = current.copy(transform = nextTransform) }
         refreshTimelineIndex()
         history.record(before)
-
         val currentLocation = timelineIndex.locate(timelinePositionMs)
         if (currentLocation?.clip?.id != id) {
             setTimelinePosition(timelineIndex.startOf(id))
@@ -580,7 +661,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun updateVisualToolbar() {
-        val transform = clips.firstOrNull { it.id == selectedClipId }?.transform
+        val transform = selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id }?.transform }
+            ?: clips.firstOrNull { it.id == selectedClipId }?.transform
         binding.visualToolbar.setState(transform, canvasSettings)
     }
 
@@ -861,6 +943,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingTrimSnapshot = null
         pendingReorderSnapshot = null
         pendingAudioEditSnapshot = null
+        pendingOverlayEditSnapshot = null
         val target = history.undo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -871,6 +954,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingTrimSnapshot = null
         pendingReorderSnapshot = null
         pendingAudioEditSnapshot = null
+        pendingOverlayEditSnapshot = null
         val target = history.redo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -880,10 +964,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = TimelineMath.sanitized(snapshot.clips, assets)
         audioAssets = snapshot.audioAssets
         audioClips = sanitizeAudioClips(snapshot.audioClips)
+        overlayAssets = snapshot.overlayAssets
+        overlayClips = sanitizeOverlayClips(snapshot.overlayClips)
         canvasSettings = snapshot.canvasSettings
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = snapshot.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
+        selectedOverlayClipId = snapshot.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = snapshot.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         renderTimelineState()
@@ -910,9 +997,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = clips.toList(),
         audioAssets = audioAssets.toList(),
         audioClips = audioClips.toList(),
+        overlayAssets = overlayAssets.toList(),
+        overlayClips = overlayClips.toList(),
         canvasSettings = canvasSettings,
         selectedClipId = selectedClipId,
         selectedAudioClipId = selectedAudioClipId,
+        selectedOverlayClipId = selectedOverlayClipId,
         playheadMs = timelinePositionMs
     )
 
@@ -941,6 +1031,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioPlayback.setTimeline(audioAssets, audioClips)
         renderAudioState()
         updateAudioUi()
+        overlayClips = sanitizeOverlayClips(overlayClips)
+        if (selectedOverlayClipId != null && overlayClips.none { it.id == selectedOverlayClipId }) selectedOverlayClipId = null
+        pruneUnusedOverlayAssets()
+        renderOverlayState()
+        updateOverlayUi()
     }
 
     private fun setTimelinePosition(positionMs: Int) {
@@ -951,6 +1046,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateSelectionUi()
         updateAudioUi()
         binding.audioTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        binding.overlayTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
     }
 
     private fun updateTimecodeUi() {
@@ -1365,6 +1462,195 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         return "Audio"
     }
 
+    private fun addOverlays(uris: List<Uri>) {
+        val projectDuration = timelineIndex.totalDurationMs
+        if (addingOverlay || projectDuration < OverlayTimelineEditor.MIN_DURATION_MS) return
+        addingOverlay = true
+        updateOverlayUi()
+
+        val unique = uris.distinctBy(Uri::toString)
+        unique.forEach(::persistReadAccess)
+        val names = unique.associate { it.toString() to resolveOverlayDisplayName(it) }
+        val videoUris = unique.filter { contentResolver.getType(it)?.startsWith("video/") == true }
+        val before = snapshot()
+
+        fun commit(results: List<MediaProbe.Result>) {
+            val resultByUri = results.associateBy { it.uri.toString() }
+            val updatedAssets = overlayAssets.toMutableList()
+            val byUri = updatedAssets.associateBy { it.uri }.toMutableMap()
+            val additions = mutableListOf<OverlayClip>()
+            val start = timelinePositionMs.coerceIn(0, (projectDuration - OverlayTimelineEditor.MIN_DURATION_MS).coerceAtLeast(0))
+            val available = (projectDuration - start).coerceAtLeast(0)
+            var nextZ = (overlayClips.maxOfOrNull { it.zIndex } ?: -1) + 1
+
+            unique.forEach { uri ->
+                val key = uri.toString()
+                val probe = resultByUri[key]
+                val isVideo = probe != null || contentResolver.getType(uri)?.startsWith("video/") == true
+                val type = if (isVideo) OverlayMediaType.VIDEO else OverlayMediaType.IMAGE
+                val existing = byUri[key]
+                val asset = if (existing == null) {
+                    OverlayAsset(
+                        id = UUID.randomUUID().toString(),
+                        uri = key,
+                        displayName = names[key] ?: "Overlay",
+                        type = type,
+                        durationMs = probe?.durationMs ?: 0,
+                        width = probe?.width ?: 0,
+                        height = probe?.height ?: 0
+                    ).also {
+                        updatedAssets += it
+                        byUri[key] = it
+                    }
+                } else {
+                    val refreshed = existing.copy(
+                        type = type,
+                        durationMs = probe?.durationMs ?: existing.durationMs,
+                        width = probe?.width ?: existing.width,
+                        height = probe?.height ?: existing.height
+                    )
+                    val idx = updatedAssets.indexOfFirst { it.id == existing.id }
+                    if (idx >= 0) updatedAssets[idx] = refreshed
+                    byUri[key] = refreshed
+                    refreshed
+                }
+
+                val requestedDuration = if (asset.type == OverlayMediaType.VIDEO) asset.durationMs else DEFAULT_IMAGE_OVERLAY_MS
+                val duration = minOf(requestedDuration, available)
+                if (duration < OverlayTimelineEditor.MIN_DURATION_MS) return@forEach
+                additions += OverlayClip(
+                    id = UUID.randomUUID().toString(),
+                    assetId = asset.id,
+                    timelineStartMs = start,
+                    durationMs = duration,
+                    sourceStartMs = 0,
+                    zIndex = nextZ++,
+                    transform = ClipTransform(scale = 0.45f, fitMode = ClipFitMode.FIT)
+                )
+            }
+
+            addingOverlay = false
+            if (additions.isEmpty()) {
+                updateOverlayUi()
+                return
+            }
+            overlayAssets = updatedAssets
+            overlayClips = sanitizeOverlayClips(overlayClips + additions)
+            pruneUnusedOverlayAssets()
+            selectedOverlayClipId = additions.last().id
+            history.record(before)
+            renderOverlayState()
+            updateOverlayUi()
+            updateVisualToolbar()
+            saveProject()
+            updateHistoryUi()
+        }
+
+        if (videoUris.isEmpty()) commit(emptyList()) else mediaProbe.probe(videoUris, ::commit)
+    }
+
+    private fun sanitizeOverlayClips(input: List<OverlayClip>): List<OverlayClip> {
+        val byId = overlayAssets.associateBy { it.id }
+        val projectDuration = clips.sumOf { it.durationMs }.coerceAtLeast(0)
+        return input.mapNotNull { clip ->
+            val asset = byId[clip.assetId] ?: return@mapNotNull null
+            OverlayTimelineEditor.normalized(clip, asset, projectDuration)
+        }.sortedWith(compareBy<OverlayClip> { it.zIndex }.thenBy { it.timelineStartMs })
+            .mapIndexed { index, clip -> if (clip.zIndex == index) clip else clip.copy(zIndex = index) }
+    }
+
+    private fun renderOverlayState() {
+        binding.overlayTimeline.setState(
+            clips = overlayClips,
+            assets = overlayAssets,
+            selectedClipId = selectedOverlayClipId,
+            durationMs = timelineIndex.totalDurationMs,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs,
+            positionMs = timelinePositionMs
+        )
+        if (::overlayPreview.isInitialized) {
+            overlayPreview.setTimeline(overlayAssets, overlayClips)
+            overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
+        }
+    }
+
+    private fun updateOverlayUi() {
+        val selected = overlayClips.firstOrNull { it.id == selectedOverlayClipId }
+        val enabled = selected != null
+        listOf(binding.overlayBackButton, binding.overlayFrontButton, binding.overlayDeleteButton).forEach { view ->
+            view.isEnabled = enabled
+            view.alpha = if (enabled) 1f else 0.38f
+        }
+        binding.addOverlayButton.isEnabled = !addingOverlay
+        binding.addOverlayButton.alpha = if (addingOverlay) 0.5f else 1f
+        binding.addOverlayButton.text = if (addingOverlay) "Adding…" else "Add overlay"
+
+        if (selected == null) {
+            binding.overlaySelectionLabel.text = if (overlayClips.isEmpty()) "No overlay · add image or video PIP" else "Tap an overlay layer to select"
+            return
+        }
+        val asset = overlayAssets.firstOrNull { it.id == selected.assetId }
+        val name = asset?.displayName?.substringBeforeLast('.')?.take(18).orEmpty().ifBlank { "Overlay" }
+        val kind = if (asset?.type == OverlayMediaType.VIDEO) "Video" else "Image"
+        binding.overlaySelectionLabel.text = "$kind · $name · L${selected.zIndex + 1} · ${(selected.transform.scale * 100).roundToInt()}%"
+    }
+
+    private fun finishOverlayGestureEdit() {
+        val before = pendingOverlayEditSnapshot
+        pendingOverlayEditSnapshot = null
+        overlayClips = sanitizeOverlayClips(overlayClips)
+        if (before != null && before != snapshot()) history.record(before)
+        renderOverlayState()
+        updateOverlayUi()
+        updateVisualToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun changeOverlayLayer(direction: Int) {
+        val id = selectedOverlayClipId ?: return
+        val before = snapshot()
+        val updated = if (direction > 0) OverlayTimelineEditor.raise(overlayClips, id) else OverlayTimelineEditor.lower(overlayClips, id)
+        if (updated == overlayClips) return
+        overlayClips = updated
+        history.record(before)
+        renderOverlayState()
+        updateOverlayUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun deleteSelectedOverlay() {
+        val id = selectedOverlayClipId ?: return
+        if (overlayClips.none { it.id == id }) return
+        val before = snapshot()
+        overlayClips = overlayClips.filterNot { it.id == id }
+        selectedOverlayClipId = overlayClips.maxByOrNull { it.zIndex }?.id
+        pruneUnusedOverlayAssets()
+        history.record(before)
+        renderOverlayState()
+        updateOverlayUi()
+        updateVisualToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun pruneUnusedOverlayAssets() {
+        val used = overlayClips.mapTo(mutableSetOf()) { it.assetId }
+        overlayAssets = overlayAssets.filter { it.id in used }
+    }
+
+    private fun resolveOverlayDisplayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (column >= 0) return cursor.getString(column) ?: "Overlay"
+            }
+        }
+        return "Overlay"
+    }
+
     private fun pruneUnusedAssets() {
         val used = clips.mapTo(mutableSetOf()) { it.assetId }
         assets = assets.filter { it.id in used }
@@ -1380,10 +1666,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             clips = clips,
             audioAssets = audioAssets,
             audioClips = audioClips,
+            overlayAssets = overlayAssets,
+            overlayClips = overlayClips,
             canvasSettings = canvasSettings,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
             selectedAudioClipId = selectedAudioClipId,
+            selectedOverlayClipId = selectedOverlayClipId,
             timelineZoom = timelineZoom,
             timelineViewportStartMs = timelineViewportStartMs
         )
@@ -1430,6 +1719,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         const val EXTRA_PROJECT_ID = "vedito.project_id"
         private const val MAX_ADDED_VIDEOS = 12
         private const val MAX_ADDED_AUDIO = 12
+        private const val MAX_ADDED_OVERLAYS = 8
+        private const val DEFAULT_IMAGE_OVERLAY_MS = 3_000
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300
         private const val MIN_AUDIO_SPLIT_EDGE_MS = 150

@@ -1,35 +1,33 @@
-# Vedito Patch 09 — Speed / Freeze / Reverse Foundation
+# Vedito Patch 10 — Visual Overlay / PIP Tracks
 
-Version: **0.9.0** (`versionCode 9`)
-Package: **`com.vedito.app`**
+Version: **0.10.0** · schema **v10** · package **`com.vedito.app`**
 
-## What changed
-- Added renderer-independent `ClipTiming` state and `ClipTimeMap` source↔timeline mapping.
-- Uniform speed presets: **0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×**.
-- Timeline duration now reflects clip speed.
-- Forward preview uses Android `MediaPlayer` playback speed.
-- Reverse mode has a real seek-driven reverse preview foundation (source audio is muted while reversing).
-- Freeze inserts a real **2-second hold clip at the playhead**, preserving the surrounding source pieces.
-- Split, duplicate, reorder, delete and project persistence understand timing state.
-- Reverse-aware split and trim mapping.
-- Freeze clips can be split but intentionally do not expose source trim handles.
-- Timing edits participate in undo/redo and autosave/reopen.
-- Schema migrated to **v9**; older projects default to normal 1× forward timing.
-- Extract-audio is disabled for retimed/reversed/freeze clips until retimed audio rendering exists, avoiding desync.
+## Added
+- Independent timed visual overlay clips above the base video timeline.
+- Image and video overlay import through the Android system photo picker.
+- Multi-layer z-order with Layer − / Layer + controls.
+- Overlay timeline selection, drag-to-move, left/right edge trim.
+- Shared transform controls for the selected overlay: scale, position, rotate, flip, opacity, crop and fit/fill.
+- Image PIP preview plus muted video PIP preview synchronized to the project playhead.
+- Renderer-independent `OverlayComposition` / `OverlayLayer` model intended to be reused by the later export compositor.
+- Overlay persistence, schema migration, autosave/reopen and undo/redo.
+- Overlay clips survive base-video timeline edits as long as they remain inside project duration; invalid tails are normalized.
+- Editor controls now live in a vertically scrollable lower panel so added tracks do not clip on shorter phones.
 
-## Device acceptance test
-1. Open an existing project and select a normal clip.
-2. Change speed down/up; verify timeline width/duration and playback speed change together.
-3. Save/leave/reopen; verify selected speed persists.
-4. Toggle Reverse; verify timeline plays backward and reaches the next clip cleanly.
-5. Pause/restart while reversing; verify playback resumes from the current playhead.
-6. Put playhead inside a normal clip and tap Freeze; verify a 2s freeze clip is inserted at that exact point.
-7. Play through normal → freeze → following clip and verify timeline/audio keep advancing.
-8. Split/duplicate/delete/reorder speed/reverse/freeze clips and exercise undo/redo.
-9. Reopen the project and verify all timing states remain intact.
+## Intentional limits
+- Video overlay audio is muted in preview. Use/extract audio as a separate audio track when needed; production overlay-audio routing belongs in the later audio/render engine.
+- Overlay clips currently use normal 1× forward source time only; overlay speed/reverse/keyframes are later milestones.
+- Overlay preview uses native Views/MediaPlayer as a foundation. The production export compositor will consume the same renderer-independent composition state, not screenshot the preview UI.
+- At most three layer lanes are visually separated in the compact overlay strip; z-order itself is not limited to three layers.
 
-## Important foundation note
-Reverse preview is currently seek-driven rather than a production reverse decoder. That is deliberate: project state and deterministic time mapping are now correct, while the final reverse frames/audio will later be rendered by the production compositor/export engine.
+## Acceptance path
+1. Open an existing project.
+2. Add an image or video overlay.
+3. Move and trim it in the overlay strip.
+4. Change layer order when two overlays overlap.
+5. Select an overlay and use Scale / Move / Rotate / Flip / Opacity / Crop / Fit controls.
+6. Scrub and play through the overlay interval.
+7. Undo/redo an overlay edit.
+8. Close and reopen the project; overlay timing, transform and layer order must persist.
 
-## Delivery
-This ZIP is intended to extract at repository root. It contains **no GitHub workflow YAML files**. Existing unzip/build workflows remain separate.
+GitHub Actions remains the build verifier. This ZIP intentionally contains **no `.yml` / `.yaml` files**.
