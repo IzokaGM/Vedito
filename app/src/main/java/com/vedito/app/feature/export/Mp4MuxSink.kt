@@ -5,9 +5,10 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import java.nio.ByteBuffer
 
-/** Small muxer gate that waits for both encoder formats and enforces monotonic PTS per track. */
+/** Small muxer gate that can finalize video-only, audio-only or A/V checkpoint files. */
 internal class Mp4MuxSink(
-    private val muxer: MediaMuxer
+    private val muxer: MediaMuxer,
+    private val requiredTracks: Set<Track> = setOf(Track.VIDEO, Track.AUDIO)
 ) {
     enum class Track { VIDEO, AUDIO }
 
@@ -26,8 +27,12 @@ internal class Mp4MuxSink(
         private set
     private var released = false
 
+    init {
+        require(requiredTracks.isNotEmpty()) { "At least one muxer track is required" }
+    }
+
     fun onFormat(track: Track, format: MediaFormat) {
-        if (released) return
+        if (released || track !in requiredTracks) return
         when (track) {
             Track.VIDEO -> if (videoTrack < 0) videoTrack = muxer.addTrack(format)
             Track.AUDIO -> if (audioTrack < 0) audioTrack = muxer.addTrack(format)
@@ -36,7 +41,7 @@ internal class Mp4MuxSink(
     }
 
     fun write(track: Track, source: ByteBuffer, info: MediaCodec.BufferInfo) {
-        if (released || info.size <= 0 || info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) return
+        if (released || track !in requiredTracks || info.size <= 0 || info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) return
         val pts = normalizedPts(track, info.presentationTimeUs)
         if (!started) {
             check(pending.size < MAX_PENDING_SAMPLES) { "Encoder produced too many samples before muxer start" }
@@ -66,7 +71,14 @@ internal class Mp4MuxSink(
     }
 
     private fun maybeStart() {
-        if (released || started || videoTrack < 0 || audioTrack < 0) return
+        if (released || started) return
+        val ready = requiredTracks.all { track ->
+            when (track) {
+                Track.VIDEO -> videoTrack >= 0
+                Track.AUDIO -> audioTrack >= 0
+            }
+        }
+        if (!ready) return
         muxer.start()
         started = true
         pending.forEach { sample ->

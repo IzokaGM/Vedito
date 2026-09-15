@@ -203,7 +203,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     ) { uri ->
         val settings = pendingExportSettings
         pendingExportSettings = null
-        if (uri != null && settings != null) startVideoExport(uri, settings)
+        if (uri != null && settings != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            startVideoExport(uri, settings)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -3207,12 +3215,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val effectivePlan = requestedPlan.copy(
             videoBitrate = device.selection?.effectiveBitrate ?: requestedPlan.videoBitrate
         )
-        val warnings = support.warnings + device.warnings
+        val recovery = exportEngine.inspectRecovery(project, settings)
+        val warnings = support.warnings + device.warnings + recovery.warnings
         val message = buildString {
             append("${effectivePlan.width}×${effectivePlan.height} · ${effectivePlan.frameRate} fps\n")
             append("${effectivePlan.videoCodec.label}\n")
             append("Video ${formatExportMbps(effectivePlan.videoBitrate)} Mbps · AAC ${effectivePlan.audioBitrate / 1_000} kbps\n")
-            append("Estimated file ${formatExportBytes(effectivePlan.estimatedOutputBytes)}")
+            append("Estimated file ${formatExportBytes(effectivePlan.estimatedOutputBytes)}\n")
+            append("Recovery working budget ~${formatExportBytes(recovery.requiredCacheBytes)}")
+            if (recovery.completedSegments > 0) {
+                append("\nResume ready: ${recovery.completedSegments}/${recovery.totalSegments} video segment(s)")
+                append(" · extra free ~${formatExportBytes(recovery.requiredAdditionalCacheBytes)}")
+            }
             device.selection?.let { selection ->
                 append("\nEncoder: ${selection.codecName}")
                 append(if (selection.hardwareAccelerated) " · hardware" else " · software")
@@ -3220,6 +3234,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (!device.canEncode) {
                 append("\n\nCannot export this profile on this device.\n")
                 append(device.failureReason ?: "No compatible encoder was found.")
+            } else if (!recovery.canStart) {
+                append("\n\nCannot start recovery export.\n")
+                append(recovery.failureReason ?: "Local export preflight failed.")
             }
             if (warnings.isNotEmpty()) {
                 append("\n\nPreflight notes:\n")
@@ -3231,7 +3248,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             .setTitle("Export preflight")
             .setMessage(message)
             .setNegativeButton("Cancel", null)
-        if (support.canExport && device.canEncode) {
+        if (support.canExport && device.canEncode && recovery.canStart) {
             builder
                 .setNeutralButton("Change") { _, _ -> showExportOptions() }
                 .setPositiveButton("Save MP4") { _, _ -> launchVideoExportDocument(settings) }
@@ -3299,7 +3316,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             override fun onCancelled() {
                 if (isFinishing || isDestroyed) return
                 finishExportUi()
-                Toast.makeText(this@EditorActivity, "Export cancelled", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@EditorActivity, "Export cancelled · any completed checkpoints were kept for retry", Toast.LENGTH_LONG).show()
             }
 
             override fun onError(message: String, throwable: Throwable?) {

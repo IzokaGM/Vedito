@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.23.0 / versionCode 23**
+- Current patch: **0.24.0 / versionCode 24**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -97,6 +97,9 @@ Important modules:
 - `core/export/GpuSourceGraphPlan.kt` — Android-free main-source crop/transform/chroma/color/mask GPU execution plan.
 - `core/export/ReverseDecodeCachePlan.kt` — Android-free reverse cache memory/timing policy.
 - `feature/export/ReverseVideoFrameDecoder.kt` — previous-sync forward decode + bounded reverse frame cache with fallback at pool layer.
+- `core/export/ExportRecoveryPlan.kt` — Android-free checkpoint segmentation, load class, working-space budget and render fingerprint contract.
+- `feature/export/ExportRecoveryStore.kt` / `ExportEnvironmentProbe.kt` — cache-backed checkpoint metadata plus resume-aware storage/memory/thermal guardrails.
+- `feature/export/Mp4SegmentMerger.kt` — no-reencode final MP4 assembly from video checkpoints + one full AAC checkpoint.
 
 ## Completed progression
 - Native clean rewrite and standalone APK.
@@ -121,6 +124,7 @@ Important modules:
 - Patch 21: bounded MediaCodec streaming decode for forward/freeze main video and video overlays with random-access fallback, reusable frame/texture storage, hybrid base/overlay composition, and encoder-surface GLES post effects/transitions.
 - Patch 22: 720p/1080p/1440p/4K export profiles, 24/30/60fps, H.264/HEVC codec selection, deterministic bitrate/file-size planning, MediaCodec size/rate/surface preflight, exact encoder selection and high-resolution main-source decode support.
 - Patch 23: encoder-surface GPU main-source graph for transform/chroma/color/mask, retained decoder leases, and bounded MediaCodec reverse GOP-tail cache with random-access fallback.
+- Patch 24: frame-boundary video checkpoints, resumable cache-backed export sessions, single full-length AAC checkpoint, no-reencode final remux, resume-aware storage preflight, thermal checkpoint backoff and per-segment decoder/GPU reacquisition.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -140,7 +144,7 @@ Important modules:
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Zero-copy OES/SurfaceTexture decoder-to-GPU path and export recovery/resume remain pending. Patch 23 now evaluates the canonical main-source graph on GLES after YUV→RGB bitmap decode and adds bounded reverse MediaCodec caching.
+- Zero-copy OES/SurfaceTexture decoder-to-GPU path remains pending. Patch 24 now provides cache-backed export recovery/resume, but export is not yet a persistent foreground/WorkManager job and Android may clear cached checkpoints.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -201,11 +205,21 @@ Important modules:
 - Decoder YUV→RGB conversion still occurs on CPU before source texture upload; a future OES/SurfaceTexture path may remove that final conversion without changing canonical render state.
 - Project schema remains v18; Patch 23 introduces no new saved project state.
 
+## Patch 24 behavior/limits
+- `ExportRecoveryPlanner` splits video on exact frame boundaries into ~18s standard, ~12s heavy or ~8s extreme checkpoints and includes a render-ABI salt in its deterministic recovery fingerprint.
+- Recovery fingerprint depends on render-relevant project state, effective export plan and exact encoder; playhead/selection/autosave timestamps do not invalidate a valid render.
+- `ExportRecoveryStore` persists finalized video checkpoints + one full AAC checkpoint under app cache. `.part` files are never resumed and stale sessions are pruned after seven days.
+- `VideoExportEngine` validates cached tracks before reuse, recreates compositor/decoder/GPU resources for every video segment, and preserves completed checkpoints on cancel/recoverable failure.
+- Audio is mixed/encoded once for the full project. Final delivery is a no-reencode `Mp4SegmentMerger` remux, avoiding AAC priming at each video boundary.
+- Storage preflight includes cache working budget, resume-aware reusable bytes and measurable destination free space; destination is checked again before final assembly.
+- Severe thermal state backs off at safe segment boundaries; critical thermal pressure exits with completed checkpoints preserved.
+- Recovery cache is not durable storage and may be cleared by Android. Export is not yet a foreground service/WorkManager job, so process death loses the active segment but finalized checkpoints can be reused.
+- Project schema remains v18; Patch 24 adds no saved editor state.
+
 ## Next milestone
-**Patch 24 — Export Recovery / Long-Project Hardening Foundation**
-- resumable/recoverable export job metadata without corrupting project state,
-- low-storage/destination failure hardening,
-- longer-project memory/thermal checkpoints and safer resource reacquisition,
-- keep Patch 23 source/reverse execution and Patch 20 audio contracts intact.
+**Patch 25 — Advanced Color / LUT / Curves Foundation**
+- extend the Patch 18 color domain with renderer-independent curves/HSL/LUT state,
+- preview/export parity through the existing GPU source graph with correctness fallbacks,
+- persistence/undo-redo without duplicating renderer-only state.
 
 See `WORKPLAN.md` for the full roadmap.

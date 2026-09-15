@@ -97,8 +97,8 @@ Pending:
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 23 adds a GPU main-source graph and bounded reverse MediaCodec cache on top of Patch 22 codec/preflight controls.**
-Completed through Patch 23:
+**In progress — Patch 24 adds recoverable segmented export and long-project guardrails on top of the Patch 23 GPU/reverse path.**
+Completed through Patch 24:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
@@ -116,11 +116,15 @@ Completed through Patch 23:
 - Encoder-surface main-source GPU graph for crop/fit/transform/keyframe+stabilization result/chroma/color/opacity/mask when post stack is GPU eligible.
 - Streaming source-frame leases pin decoder-owned bitmaps until encoder draw completes.
 - Reverse clips prefer previous-sync MediaCodec forward decode with a memory-bounded decoded-tail cache and automatic MMR fallback.
+- Frame-boundary video checkpoints with deterministic render fingerprinting and cache-backed resume after cancel/recoverable interruption.
+- One full-project AAC checkpoint plus no-reencode final MP4 remux, preventing per-segment AAC priming seams.
+- Resume-aware cache budget, measurable destination-space preflight/recheck, memory warnings and thermal checkpoint backoff.
+- Per-video-segment compositor/decoder/GPU teardown/reacquisition to reduce long-run resource accumulation.
 
 Pending:
 - Zero-copy OES/SurfaceTexture decoder-to-GPU source path and broader GPU overlay graph.
+- Persistent foreground/WorkManager export execution across aggressive process/background lifecycle events.
 - Arbitrary/manual bitrate controls beyond the safe Patch 22 planner.
-- Recovery/resume, deeper thermal/memory/storage destination preflight and long-project optimization.
 - Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
 
 ## Stage 8 — AI suite
@@ -221,14 +225,19 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - MediaCodec surface/size/rate preflight, hardware-first exact encoder selection and safe bitrate clamping.
   - Preflight summary includes estimated output size and compatibility/performance warnings before SAF destination selection.
   - Main-source high-resolution decode may reach 3840px while overlay/static decode remains bounded; schema stays v18.
-- **Patch 23:** Full GPU Source Graph / Reverse Decode Cache Foundation — current patch.
+- **Patch 23:** Full GPU Source Graph / Reverse Decode Cache Foundation — locked after CI/device verification.
   - Android-free `GpuSourceGraphPlanner` keeps crop/fit/transform/chroma/color/mask execution tied to canonical frame state.
   - Main-source stages run in encoder GLES when the timed post stack is GPU compatible; Grain preserves CPU fallback.
   - `FrameLease` pins decoder-owned main-source bitmaps through encoder upload.
   - Reverse clips prefer bounded MediaCodec previous-sync forward-decode cache before MMR fallback.
   - Schema remains v18.
-- **Patch 24:** Export Recovery / Long-Project Hardening Foundation — next.
-- **Patch 25+:** advanced color/audio/text, AI/templates/cloud and release hardening.
+- **Patch 24:** Export Recovery / Long-Project Hardening Foundation — current patch.
+  - Frame-boundary recoverable video checkpoints with render-ABI fingerprinting.
+  - Full-length AAC checkpoint + lossless final remux.
+  - Resume-aware cache/destination storage preflight and thermal checkpoint hardening.
+  - Per-segment decoder/GPU/compositor resource reacquisition; schema remains v18.
+- **Patch 25:** Advanced Color / LUT / Curves Foundation — next.
+- **Patch 26+:** advanced audio/text, AI/templates/cloud and release hardening.
 
 ## Release gates
 Before locking a major stage:

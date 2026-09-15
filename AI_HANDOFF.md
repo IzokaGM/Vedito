@@ -4,22 +4,22 @@ Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.23.0 / versionCode 23 / project schema v18**.
+- Current patch: **0.24.0 / versionCode 24 / project schema v18**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
 - New patch requires owner confirmation unless owner already explicitly said to start.
 
-Patch 23 moves the canonical **main video source graph** onto the encoder GLES shader when the active post stack is GPU-compatible. `GpuSourceGraphPlanner` is Android-free and resolves the same `FrameCompositionBuilder` state for crop/fit/transform, chroma, color, opacity and mask. `CodecInputSurface` must consume that plan; do not create preview-only or shader-only transform/color state.
+Patch 24 makes production export recoverable without adding project JSON state. `ExportRecoveryPlanner` splits output on frame boundaries and fingerprints only render-relevant project/export state plus the exact encoder and a render-ABI salt. Any future patch that changes encoded visual/timing semantics must bump that recovery fingerprint revision or otherwise invalidate old checkpoints.
 
-`HybridComposedFrame` may retain a raw main-source bitmap plus a `FrameLease`. The lease must remain alive until `CodecInputSurface.draw(...)` returns and must then be closed. `VideoFrameSourcePool` pins streaming entries while a lease is active so overlay decoder churn cannot recycle the main frame prematurely.
+`ExportRecoveryStore` owns cache-backed finalized segment files and the full AAC checkpoint. Never treat `.part` files as resumable. Completed files are validated through `Mp4SegmentMerger` before reuse. Recovery files may disappear because Android cache is not durable storage; code must always tolerate a missing checkpoint and rerender it.
 
-Reverse clips now prefer `ReverseVideoFrameDecoder`: previous-sync seek → forward MediaCodec decode → bounded decoded tail cache → descending reverse lookup. `ReverseDecodeCachePlanner` owns memory/timing policy. `MediaMetadataRetriever` remains the automatic compatibility fallback; do not delete it until reverse MediaCodec behavior has been proven across devices.
+Video checkpoints are video-only MP4s. Audio is mixed/encoded once into one audio-only AAC/MP4 checkpoint. `Mp4SegmentMerger` performs final no-reencode remux. Do not encode AAC separately per video segment because repeated encoder priming/padding can create audible boundary errors.
 
-Patch 20 `AudioMixPlan`/`OfflineAudioMixer` remains the real stereo AAC path. Patch 22 `ExportPlanner` + `ExportCapabilityProbe` remains authoritative for resolution/FPS/AVC/HEVC/bitrate/encoder preflight. Do not bypass `ClipTimeMap`, `FrameCompositionBuilder`, shared keyframe/tracking/color/mask/chroma state, or persistence.
+Patch 24 preflight is resume-aware: completed checkpoint bytes reduce extra cache-space requirements, and a valid audio checkpoint removes the large temporary PCM working reserve. Destination storage is checked again immediately before final assembly. Thermal pressure is checked between checkpoints so expensive decoder/GPU state has already been released when backing off or failing safely.
 
-Important Patch 23 limit: the source graph is GPU evaluated **after** decoder YUV→RGB bitmap conversion. A later OES/SurfaceTexture decoder path may remove that CPU conversion without changing `GpuSourceGraphPlanner` semantics. Grain and unsupported post stacks keep the CPU correctness fallback.
+Patch 23 `GpuSourceGraphPlanner`/reverse cache, Patch 22 `ExportPlanner`/`ExportCapabilityProbe`, Patch 20 `AudioMixPlan`/`OfflineAudioMixer`, `ClipTimeMap` and `FrameCompositionBuilder` remain authoritative. Project schema stays v18.
 
-Project schema stays v18.
+Important limits: no persistent foreground export service yet; process death can lose only the active segment, not finalized checkpoints. Android may clear app cache. Zero-copy OES/SurfaceTexture source decode is still pending.
 
-Next planned milestone: **Patch 24 — Export Recovery / Long-Project Hardening Foundation** unless CI/device testing exposes a Patch 23 regression first.
+Next planned milestone: **Patch 25 — Advanced Color / LUT / Curves Foundation** unless CI/device testing exposes a Patch 24 regression first.
