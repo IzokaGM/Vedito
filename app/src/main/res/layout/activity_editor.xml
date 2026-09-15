@@ -88,6 +88,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
+            <com.vedito.app.feature.editor.effect.EffectPreviewView
+                android:id="@+id/effectPreviewLayer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
             <FrameLayout
                 android:id="@+id/overlayPreviewLayer"
                 android:layout_width="match_parent"
@@ -199,6 +205,30 @@
             android:layout_height="42dp"
             android:layout_marginTop="2dp"
             android:contentDescription="Speed, freeze and reverse controls" />
+
+        <TextView
+            android:id="@+id/effectSelectionLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="No effect · add a timed video effect"
+            android:textColor="@color/vedito_muted"
+            android:textSize="10sp" />
+
+        <com.vedito.app.feature.editor.effect.EffectToolbarView
+            android:id="@+id/effectToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Effects and transition controls" />
+
+        <com.vedito.app.feature.editor.effect.EffectTimelineView
+            android:id="@+id/effectTimeline"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Video effect timeline" />
 
         <TextView
             android:id="@+id/overlaySelectionLabel"

@@ -70,8 +70,18 @@ Completed: timed manual text layers, dedicated caption segments, SRT import/expo
 Pending: custom/downloaded font packs, advanced/keyframed text animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
-**Pending.**
-Modular effect system, filters/adjustments, transitions, effects, stickers/overlay assets, timing/parameters.
+**Foundation completed in Patch 14; advanced GPU effects/color tools pending.**
+Completed:
+- Independent timed effect track + move/trim.
+- Warm/Cool/Vignette/Dream/Grain native preview effects with intensity.
+- Renderer-independent effect/transition composition state.
+- Fade-Black/Flash/Wipe clip-boundary transitions with duration control.
+- Persistence + undo/redo.
+
+Pending:
+- GPU shader stack, true color adjustments, LUT/HSL/curves.
+- Dual-source cross-dissolve and richer transition library.
+- Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
 **Pending — critical.**
@@ -127,15 +137,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - SRT import/export and batch ±0.25s timing shift.
   - Caption-safe BOXED/CLEAN/LARGE presets.
   - Schema v12 persistence + undo/redo.
-- **Patch 13:** Text / Caption Expansion Foundation — current patch.
+- **Patch 13:** Text / Caption Expansion Foundation — locked after CI/device verification.
   - Reusable free-text presets and renderer-independent font family keys.
   - Basic deterministic None/Fade/Pop/Slide-Up animation via `TextMotion`.
   - Expanded caption presets plus caption font/animation controls.
   - Schema v13 persistence + undo/redo.
-- **Patch 14:** Effects / Transitions Foundation — next.
-  - Renderer-independent effect stack and transition timing/state.
-  - Initial real preview adjustments/filters and transition model.
-- **Patch 15+:** Pro visual tools, production export, advanced audio/text and AI stages.
+- **Patch 14:** Effects / Transitions Foundation — current patch.
+  - Dedicated timed FX track with move/trim and intensity.
+  - Warm/Cool/Vignette/Dream/Grain real native preview overlays.
+  - Fade-Black/Flash/Wipe clip-boundary transition model + duration.
+  - Renderer-independent `EffectComposition`, persistence and undo/redo.
+- **Patch 15:** Keyframe Engine Foundation — next.
+  - Renderer-independent keyframe tracks, interpolation and easing.
+  - First integration with clip/overlay transforms.
+- **Patch 16+:** masks/chroma/color/export, advanced audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

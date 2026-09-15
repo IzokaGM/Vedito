@@ -87,13 +87,32 @@ data class MediaAsset(
     }
 }
 
+enum class TransitionKind {
+    NONE,
+    FADE_BLACK,
+    FLASH_WHITE,
+    WIPE
+}
+
+data class TransitionSpec(
+    val kind: TransitionKind = TransitionKind.NONE,
+    val durationMs: Int = DEFAULT_DURATION_MS
+) {
+    companion object {
+        const val MIN_DURATION_MS = 200
+        const val DEFAULT_DURATION_MS = 500
+        const val MAX_DURATION_MS = 1_500
+    }
+}
+
 data class Clip(
     val id: String,
     val assetId: String,
     val sourceStartMs: Int,
     val sourceEndMs: Int,
     val transform: ClipTransform = ClipTransform(),
-    val timing: ClipTiming = ClipTiming()
+    val timing: ClipTiming = ClipTiming(),
+    val transitionOut: TransitionSpec = TransitionSpec()
 ) {
     val sourceDurationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)
@@ -232,6 +251,25 @@ data class CaptionSegment(
         get() = timelineStartMs + durationMs
 }
 
+enum class VideoEffectKind {
+    WARM,
+    COOL,
+    VIGNETTE,
+    DREAM,
+    GRAIN
+}
+
+data class EffectClip(
+    val id: String,
+    val timelineStartMs: Int,
+    val durationMs: Int,
+    val kind: VideoEffectKind = VideoEffectKind.WARM,
+    val intensity: Float = 0.6f
+) {
+    val timelineEndMs: Int
+        get() = timelineStartMs + durationMs
+}
+
 data class AudioAsset(
     val id: String,
     val uri: String,
@@ -269,6 +307,7 @@ data class Project(
     val overlayClips: List<OverlayClip> = emptyList(),
     val textClips: List<TextClip> = emptyList(),
     val captionSegments: List<CaptionSegment> = emptyList(),
+    val effectClips: List<EffectClip> = emptyList(),
     val canvasSettings: CanvasSettings = CanvasSettings(),
     val playheadMs: Int = 0,
     val selectedClipId: String? = null,
@@ -276,6 +315,7 @@ data class Project(
     val selectedOverlayClipId: String? = null,
     val selectedTextClipId: String? = null,
     val selectedCaptionSegmentId: String? = null,
+    val selectedEffectClipId: String? = null,
     val timelineZoom: Float = 1f,
     val timelineViewportStartMs: Int = 0
 ) {

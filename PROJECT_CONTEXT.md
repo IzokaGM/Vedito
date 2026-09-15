@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.13.0 / versionCode 13**
+- Current patch: **0.14.0 / versionCode 14**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -44,7 +44,7 @@ Current external CI concept:
 
 ## Current core model
 - `MediaAsset`: video source metadata.
-- `Clip`: source trim + `ClipTransform` + `ClipTiming`.
+- `Clip`: source trim + `ClipTransform` + `ClipTiming` + outgoing `TransitionSpec`.
 - `ClipTiming`: speed, playback mode (FORWARD/REVERSE/FREEZE), freeze source frame/duration.
 - `ClipTimeMap`: canonical source↔timeline time mapping. Future speed curves/export must build on this rather than duplicating timing math in UI.
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
@@ -56,10 +56,12 @@ Current external CI concept:
 - `TextComposition`: renderer-independent active text-layer resolver for preview/export reuse.
 - `CaptionSegment`: dedicated subtitle cue with project timing, caption-safe style preset, font family key and deterministic text animation state.
 - `CaptionComposition` / `CaptionTimelineEditor` / `SrtCodec`: renderer-independent caption resolution, timing edits and SRT interchange.
-- `Project`: video/audio/overlay/text/caption state, canvas, playhead, selections and zoom/viewport.
+- `EffectClip`: independent timed effect segment with kind/intensity.
+- `EffectComposition`: renderer-independent active-effect and clip-boundary transition envelope resolver.
+- `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v13.
+- `core/projects/ProjectRepository.kt` — persistence, schema v14.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -73,6 +75,8 @@ Important modules:
 - `core/text/TextComposition.kt`, `TextTimelineEditor.kt`, `TextPresetCatalog.kt`, `TextMotion.kt` — text timing/layer/preset/animation rules.
 - `feature/editor/text/TextTimelineView.kt`, `TextToolbarView.kt`, `TextPreviewController.kt` — native manual text editing/preview.
 - `core/caption/*` + `feature/editor/caption/*` — subtitle segments, SRT import/export, caption timeline and preview.
+- `core/effect/EffectTimelineEditor.kt`, `EffectComposition.kt` — timed effect editing plus renderer-independent effect/transition state.
+- `feature/editor/effect/*` — FX timeline, controls and native preview composition.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
 ## Completed progression
@@ -88,14 +92,15 @@ Important modules:
 - Patch 11: timed manual text layers, content editing, text timeline move/trim, text z-order, style/transform controls, renderer-independent text composition, undo/redo and persistence.
 - Patch 12: dedicated caption segments, native caption preview/timeline, manual segment editing/split, batch ±0.25s shift, SRT import/export, renderer-independent caption composition, undo/redo and schema v12 persistence.
 - Patch 13: reusable free-text presets, shared font-family keys, shadow/letter-spacing style state, deterministic Fade/Pop/Slide-Up text motion, expanded caption presets plus caption font/animation controls, undo/redo and schema v13 persistence.
+- Patch 14: timed FX track, real Warm/Cool/Vignette/Dream/Grain native preview overlays, effect intensity, Fade-Black/Flash/Wipe clip-boundary transitions, renderer-independent `EffectComposition`, transition-safe split/duplicate semantics, undo/redo and schema v14 persistence.
 
-## Patch 13 behavior/limits
-- Free text has reusable Classic/Title/Minimal/Impact/Lower Third presets. Manual style edits mark a text clip as `CUSTOM`.
-- Font state is stored as renderer-independent family keys, not Android `Typeface` objects or file paths.
-- Basic text/caption motion is deterministic from local timeline time via `TextMotion`; preview Views only apply the resulting frame.
-- Caption presets now include BOXED, CLEAN, LARGE, YELLOW and SOFT; SRT interchange still exports only standard timing/text, as expected.
-- No external/custom font assets are bundled, keeping APK size controlled.
-- Auto captions and per-word timing remain future AI/text milestones.
+## Patch 14 behavior/limits
+- Effects are independent timed segments; they can overlap and are resolved from project timeline time.
+- Current effect kinds are lightweight native compositing effects: WARM, COOL, VIGNETTE, DREAM and GRAIN. They are real preview behavior but are not the final shader-grade color engine.
+- Outgoing clip transitions are stored as renderer-independent `TransitionSpec` state. Current transitions are NONE, FADE_BLACK, FLASH_WHITE and WIPE.
+- Transition preview spans both sides of a clip boundary using one deterministic envelope. True source-to-source cross-dissolve requires the later dual-decoder/export compositor.
+- Splitting/duplicating a clip avoids unintentionally duplicating the old outgoing transition across the new internal boundary.
+- Effect and transition edits persist and participate in undo/redo.
 
 ## Explicitly not completed
 - Speed curves UI/easing.
@@ -103,16 +108,16 @@ Important modules:
 - Freeze duration UI beyond default insertion.
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
-- Effects/transitions/color grading.
+- Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Keyframes/masks/chroma/tracking/stabilization.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
 ## Next milestone
-**Patch 14 — Effects / Transitions Foundation**
-- renderer-independent effect/transition state and timing model,
-- basic adjustment/filter stack with real preview path,
-- clip-to-clip transition model that can be consumed by the future export compositor,
-- keep heavy AI/effect packs for later stages.
+**Patch 15 — Keyframe Engine Foundation**
+- renderer-independent keyframe tracks + interpolation/easing,
+- first application to clip/overlay transform properties,
+- preview evaluation from the same state future export will consume,
+- undo/redo + persistence + timeline-safe keyframe timing.
 
 See `WORKPLAN.md` for the full roadmap.

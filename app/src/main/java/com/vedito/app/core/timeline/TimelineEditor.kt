@@ -3,6 +3,7 @@ package com.vedito.app.core.timeline
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
+import com.vedito.app.core.model.TransitionSpec
 import java.util.UUID
 
 object TimelineEditor {
@@ -51,10 +52,12 @@ object TimelineEditor {
             }
         }
 
+        val normalizedPair = pair.first.copy(transitionOut = TransitionSpec()) to
+            pair.second.copy(transitionOut = original.transitionOut)
         val next = clips.toMutableList().apply {
             removeAt(location.clipIndex)
-            add(location.clipIndex, pair.second)
-            add(location.clipIndex, pair.first)
+            add(location.clipIndex, normalizedPair.second)
+            add(location.clipIndex, normalizedPair.first)
         }
         return Result(next, pair.second.id, playheadMs.coerceIn(0, TimelineMath.totalDurationMs(next)))
     }
@@ -97,8 +100,12 @@ object TimelineEditor {
     fun duplicate(clips: List<Clip>, selectedId: String?): Result? {
         val index = clips.indexOfFirst { it.id == selectedId }
         if (index < 0) return null
-        val copy = clips[index].copy(id = UUID.randomUUID().toString())
-        val next = clips.toMutableList().apply { add(index + 1, copy) }
+        val original = clips[index]
+        val copy = original.copy(id = UUID.randomUUID().toString())
+        val next = clips.toMutableList().apply {
+            this[index] = original.copy(transitionOut = TransitionSpec())
+            add(index + 1, copy)
+        }
         return Result(next, copy.id, TimelineMath.clipStartMs(next, copy.id))
     }
 
@@ -143,6 +150,7 @@ object TimelineEditor {
         val safeSource = source.coerceIn(location.clip.sourceStartMs, (location.clip.sourceEndMs - 1).coerceAtLeast(location.clip.sourceStartMs))
         val freeze = location.clip.copy(
             id = UUID.randomUUID().toString(),
+            transitionOut = TransitionSpec(),
             timing = ClipTiming(
                 speed = 1f,
                 mode = ClipPlaybackMode.FREEZE,

@@ -32,6 +32,10 @@ import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
+import com.vedito.app.core.model.EffectClip
+import com.vedito.app.core.model.TransitionKind
+import com.vedito.app.core.model.TransitionSpec
+import com.vedito.app.core.model.VideoEffectKind
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
@@ -46,6 +50,8 @@ import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.projects.ProjectRepository
 import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.caption.SrtCodec
+import com.vedito.app.core.effect.EffectComposition
+import com.vedito.app.core.effect.EffectTimelineEditor
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
@@ -61,6 +67,7 @@ import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.caption.CaptionToolbarView
+import com.vedito.app.feature.editor.effect.EffectToolbarView
 import com.vedito.app.feature.editor.overlay.OverlayPreviewController
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
 import com.vedito.app.feature.editor.text.TextPreviewController
@@ -96,6 +103,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var overlayClips: List<OverlayClip> = emptyList()
     private var textClips: List<TextClip> = emptyList()
     private var captionSegments: List<CaptionSegment> = emptyList()
+    private var effectClips: List<EffectClip> = emptyList()
     private var canvasSettings = CanvasSettings()
     private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
@@ -103,6 +111,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var selectedOverlayClipId: String? = null
     private var selectedTextClipId: String? = null
     private var selectedCaptionSegmentId: String? = null
+    private var selectedEffectClipId: String? = null
     private var timelinePositionMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
@@ -117,6 +126,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var pendingOverlayEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingTextEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingCaptionEditSnapshot: EditorHistory.Snapshot? = null
+    private var pendingEffectEditSnapshot: EditorHistory.Snapshot? = null
     private var addingOverlay = false
 
     private val addVideoPicker = registerForActivityResult(
@@ -187,6 +197,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayClips = sanitizeOverlayClips(project.overlayClips)
         textClips = sanitizeTextClips(project.textClips)
         captionSegments = sanitizeCaptionSegments(project.captionSegments)
+        effectClips = sanitizeEffectClips(project.effectClips)
         canvasSettings = project.canvasSettings
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
@@ -194,6 +205,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         selectedOverlayClipId = project.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         selectedTextClipId = project.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
         selectedCaptionSegmentId = project.selectedCaptionSegmentId?.takeIf { id -> captionSegments.any { it.id == id } }
+        selectedEffectClipId = project.selectedEffectClipId?.takeIf { id -> effectClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = project.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         timelineZoom = project.timelineZoom.coerceIn(1f, 8f)
@@ -245,6 +257,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.captionShiftBackButton.setOnClickListener { shiftAllCaptions(-CAPTION_SHIFT_STEP_MS) }
         binding.captionShiftForwardButton.setOnClickListener { shiftAllCaptions(CAPTION_SHIFT_STEP_MS) }
         binding.captionToolbar.onAction = ::handleCaptionAction
+        binding.effectToolbar.onAction = ::handleEffectAction
         binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.timingToolbar.onAction = ::handleTimingAction
@@ -280,6 +293,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
+            updateEffectUi()
+            renderEffectState()
             renderOverlayState()
             renderTextState()
             renderCaptionState()
@@ -354,6 +369,25 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (finished) finishCaptionGestureEdit() else renderCaptionState()
         }
 
+        binding.effectTimeline.onEffectSelected = { id ->
+            selectedEffectClipId = id
+            updateEffectUi()
+            renderEffectState()
+            saveProject()
+        }
+        binding.effectTimeline.onEffectEditStart = { id ->
+            selectedEffectClipId = id
+            pendingEffectEditSnapshot = snapshot()
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+        }
+        binding.effectTimeline.onEffectChanged = { edited, finished ->
+            effectClips = effectClips.map { if (it.id == edited.id) edited else it }.sortedBy { it.timelineStartMs }
+            selectedEffectClipId = edited.id
+            if (finished) finishEffectGestureEdit() else renderEffectState()
+        }
+
         binding.timeline.onClipSelected = { id ->
             selectedClipId = id
             selectedOverlayClipId = null
@@ -365,6 +399,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
+            updateEffectUi()
+            renderEffectState()
             renderOverlayState()
             renderTextState()
             renderCaptionState()
@@ -403,6 +439,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             renderOverlayState()
             renderTextState()
             renderCaptionState()
+            renderEffectState()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -572,6 +609,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (isPlaying) audioPlayback.playFrom(timelinePositionMs) else audioPlayback.pause()
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, isPlaying, selectedOverlayClipId)
         if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
+        renderEffectPreview()
     }
 
     override fun onError(message: String) {
@@ -1216,6 +1254,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingOverlayEditSnapshot = null
         pendingTextEditSnapshot = null
         pendingCaptionEditSnapshot = null
+        pendingEffectEditSnapshot = null
         val target = history.undo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -1229,6 +1268,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingOverlayEditSnapshot = null
         pendingTextEditSnapshot = null
         pendingCaptionEditSnapshot = null
+        pendingEffectEditSnapshot = null
         val target = history.redo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -1242,6 +1282,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayClips = sanitizeOverlayClips(snapshot.overlayClips)
         textClips = sanitizeTextClips(snapshot.textClips)
         captionSegments = sanitizeCaptionSegments(snapshot.captionSegments)
+        effectClips = sanitizeEffectClips(snapshot.effectClips)
         canvasSettings = snapshot.canvasSettings
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
@@ -1249,6 +1290,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         selectedOverlayClipId = snapshot.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         selectedTextClipId = snapshot.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
         selectedCaptionSegmentId = snapshot.selectedCaptionSegmentId?.takeIf { id -> captionSegments.any { it.id == id } }
+        selectedEffectClipId = snapshot.selectedEffectClipId?.takeIf { id -> effectClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = snapshot.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         renderTimelineState()
@@ -1279,12 +1321,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayClips = overlayClips.toList(),
         textClips = textClips.toList(),
         captionSegments = captionSegments.toList(),
+        effectClips = effectClips.toList(),
         canvasSettings = canvasSettings,
         selectedClipId = selectedClipId,
         selectedAudioClipId = selectedAudioClipId,
         selectedOverlayClipId = selectedOverlayClipId,
         selectedTextClipId = selectedTextClipId,
         selectedCaptionSegmentId = selectedCaptionSegmentId,
+        selectedEffectClipId = selectedEffectClipId,
         playheadMs = timelinePositionMs
     )
 
@@ -1326,6 +1370,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (selectedCaptionSegmentId != null && captionSegments.none { it.id == selectedCaptionSegmentId }) selectedCaptionSegmentId = null
         renderCaptionState()
         updateCaptionUi()
+        effectClips = sanitizeEffectClips(effectClips)
+        if (selectedEffectClipId != null && effectClips.none { it.id == selectedEffectClipId }) selectedEffectClipId = null
+        renderEffectState()
+        updateEffectUi()
         updateVisualToolbar()
         updateTimingToolbar()
     }
@@ -1341,6 +1389,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.overlayTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         binding.textTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         binding.captionTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        binding.effectTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        renderEffectPreview()
         if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
         if (::captionPreview.isInitialized) captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
@@ -2379,6 +2429,145 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
     }
 
+    private fun handleEffectAction(action: EffectToolbarView.Action) {
+        when (action) {
+            EffectToolbarView.Action.ADD_EFFECT -> addEffectAtPlayhead()
+            EffectToolbarView.Action.EFFECT_KIND -> cycleSelectedEffectKind()
+            EffectToolbarView.Action.INTENSITY_DOWN -> adjustSelectedEffectIntensity(-0.1f)
+            EffectToolbarView.Action.INTENSITY_UP -> adjustSelectedEffectIntensity(0.1f)
+            EffectToolbarView.Action.DELETE_EFFECT -> deleteSelectedEffect()
+            EffectToolbarView.Action.TRANSITION_KIND -> cycleSelectedTransitionKind()
+            EffectToolbarView.Action.TRANSITION_DURATION -> cycleSelectedTransitionDuration()
+        }
+    }
+
+    private fun addEffectAtPlayhead() {
+        val total = timelineIndex.totalDurationMs
+        if (total < EffectTimelineEditor.MIN_DURATION_MS) return
+        val before = snapshot()
+        val start = timelinePositionMs.coerceIn(0, (total - EffectTimelineEditor.MIN_DURATION_MS).coerceAtLeast(0))
+        val duration = EffectTimelineEditor.DEFAULT_DURATION_MS.coerceAtMost(total - start).coerceAtLeast(EffectTimelineEditor.MIN_DURATION_MS)
+        val effect = EffectClip(
+            id = UUID.randomUUID().toString(),
+            timelineStartMs = start,
+            durationMs = duration,
+            kind = VideoEffectKind.WARM,
+            intensity = 0.6f
+        )
+        effectClips = (effectClips + effect).sortedBy { it.timelineStartMs }
+        selectedEffectClipId = effect.id
+        commitMutation(before)
+    }
+
+    private fun cycleSelectedEffectKind() {
+        val id = selectedEffectClipId ?: return
+        val index = effectClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val values = VideoEffectKind.values()
+        val current = effectClips[index]
+        val next = values[(current.kind.ordinal + 1) % values.size]
+        effectClips = effectClips.toMutableList().apply { this[index] = current.copy(kind = next) }
+        commitMutation(before)
+    }
+
+    private fun adjustSelectedEffectIntensity(delta: Float) {
+        val id = selectedEffectClipId ?: return
+        val index = effectClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = effectClips[index]
+        val next = (current.intensity + delta).coerceIn(0.1f, 1f)
+        if (kotlin.math.abs(next - current.intensity) < 0.001f) return
+        val before = snapshot()
+        effectClips = effectClips.toMutableList().apply { this[index] = current.copy(intensity = next) }
+        commitMutation(before)
+    }
+
+    private fun deleteSelectedEffect() {
+        val id = selectedEffectClipId ?: return
+        if (effectClips.none { it.id == id }) return
+        val before = snapshot()
+        effectClips = effectClips.filterNot { it.id == id }
+        selectedEffectClipId = null
+        commitMutation(before)
+    }
+
+    private fun cycleSelectedTransitionKind() {
+        val id = selectedClipId ?: return
+        val index = clips.indexOfFirst { it.id == id }
+        if (index < 0 || index >= clips.lastIndex) return
+        val before = snapshot()
+        val current = clips[index]
+        val values = TransitionKind.values()
+        val next = values[(current.transitionOut.kind.ordinal + 1) % values.size]
+        clips = clips.toMutableList().apply {
+            this[index] = current.copy(transitionOut = current.transitionOut.copy(kind = next))
+        }
+        commitMutation(before)
+    }
+
+    private fun cycleSelectedTransitionDuration() {
+        val id = selectedClipId ?: return
+        val index = clips.indexOfFirst { it.id == id }
+        if (index < 0 || index >= clips.lastIndex) return
+        val before = snapshot()
+        val current = clips[index]
+        val choices = intArrayOf(300, 500, 800, 1_200)
+        val next = choices.firstOrNull { it > current.transitionOut.durationMs } ?: choices.first()
+        clips = clips.toMutableList().apply {
+            this[index] = current.copy(transitionOut = current.transitionOut.copy(durationMs = next))
+        }
+        commitMutation(before)
+    }
+
+    private fun sanitizeEffectClips(input: List<EffectClip>): List<EffectClip> =
+        EffectTimelineEditor.normalizeAll(input, TimelineMath.totalDurationMs(clips))
+
+    private fun renderEffectState() {
+        if (!::binding.isInitialized) return
+        binding.effectTimeline.setState(
+            effects = effectClips,
+            selectedEffectId = selectedEffectClipId,
+            durationMs = timelineIndex.totalDurationMs,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs,
+            positionMs = timelinePositionMs
+        )
+        renderEffectPreview()
+    }
+
+    private fun renderEffectPreview() {
+        if (!::binding.isInitialized) return
+        binding.effectPreviewLayer.render(
+            effects = EffectComposition.activeEffects(effectClips, timelinePositionMs),
+            transitionFrame = EffectComposition.transitionFrame(clips, timelinePositionMs),
+            timelinePositionMs = timelinePositionMs
+        )
+    }
+
+    private fun updateEffectUi() {
+        if (!::binding.isInitialized) return
+        val effect = selectedEffectClipId?.let { id -> effectClips.firstOrNull { it.id == id } }
+        val clip = selectedClipId?.let { id -> clips.firstOrNull { it.id == id } }
+        val hasNext = clip != null && clips.indexOfFirst { it.id == clip.id } in 0 until clips.lastIndex
+        binding.effectToolbar.setState(effect, clip, hasNext)
+        binding.effectSelectionLabel.text = when {
+            effect != null -> "FX ${effect.kind.name.lowercase().replace('_', ' ')} · ${(effect.intensity * 100f).roundToInt()}% · ${formatDuration(effect.durationMs)}"
+            clip != null && hasNext -> "Transition ${clip.transitionOut.kind.name.lowercase().replace('_', ' ')} · ${clip.transitionOut.durationMs}ms"
+            else -> "No effect · add a timed video effect"
+        }
+    }
+
+    private fun finishEffectGestureEdit() {
+        val before = pendingEffectEditSnapshot ?: return
+        pendingEffectEditSnapshot = null
+        effectClips = sanitizeEffectClips(effectClips)
+        if (before != snapshot()) history.record(before)
+        renderTimelineState()
+        saveProject()
+        updateHistoryUi()
+    }
+
     private fun pruneUnusedAssets() {
         val used = clips.mapTo(mutableSetOf()) { it.assetId }
         assets = assets.filter { it.id in used }
@@ -2398,6 +2587,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             overlayClips = overlayClips,
             textClips = textClips,
             captionSegments = captionSegments,
+            effectClips = effectClips,
             canvasSettings = canvasSettings,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
@@ -2405,6 +2595,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             selectedOverlayClipId = selectedOverlayClipId,
             selectedTextClipId = selectedTextClipId,
             selectedCaptionSegmentId = selectedCaptionSegmentId,
+            selectedEffectClipId = selectedEffectClipId,
             timelineZoom = timelineZoom,
             timelineViewportStartMs = timelineViewportStartMs
         )

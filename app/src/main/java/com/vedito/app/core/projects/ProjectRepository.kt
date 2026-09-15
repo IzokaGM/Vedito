@@ -13,6 +13,10 @@ import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
+import com.vedito.app.core.model.EffectClip
+import com.vedito.app.core.model.TransitionKind
+import com.vedito.app.core.model.TransitionSpec
+import com.vedito.app.core.model.VideoEffectKind
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
@@ -73,6 +77,7 @@ class ProjectRepository(context: Context) {
         val overlayClips = parseOverlayClips(item, overlayAssets)
         val textClips = parseTextClips(item)
         val captionSegments = parseCaptionSegments(item)
+        val effectClips = parseEffectClips(item)
 
         return Project(
             id = id,
@@ -86,6 +91,7 @@ class ProjectRepository(context: Context) {
             overlayClips = overlayClips,
             textClips = textClips,
             captionSegments = captionSegments,
+            effectClips = effectClips,
             canvasSettings = parseCanvasSettings(item),
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
@@ -93,6 +99,7 @@ class ProjectRepository(context: Context) {
             selectedOverlayClipId = item.optString("selectedOverlayClipId").takeIf { it.isNotBlank() },
             selectedTextClipId = item.optString("selectedTextClipId").takeIf { it.isNotBlank() },
             selectedCaptionSegmentId = item.optString("selectedCaptionSegmentId").takeIf { it.isNotBlank() },
+            selectedEffectClipId = item.optString("selectedEffectClipId").takeIf { it.isNotBlank() },
             timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
             timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
@@ -153,7 +160,8 @@ class ProjectRepository(context: Context) {
                         sourceStartMs = clip.optInt("sourceStartMs", 0),
                         sourceEndMs = clip.optInt("sourceEndMs", 0),
                         transform = parseClipTransform(clip.optJSONObject("transform")),
-                        timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0))
+                        timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0)),
+                        transitionOut = parseTransition(clip.optJSONObject("transitionOut"))
                     )
                 )
             }
@@ -372,6 +380,36 @@ class ProjectRepository(context: Context) {
         }
     }
 
+    private fun parseEffectClips(item: JSONObject): List<EffectClip> {
+        val array = item.optJSONArray("effectClips") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val effect = array.optJSONObject(index) ?: continue
+                val id = effect.optString("id")
+                val duration = effect.optInt("durationMs", 0)
+                if (id.isBlank() || duration <= 0) continue
+                add(
+                    EffectClip(
+                        id = id,
+                        timelineStartMs = effect.optInt("timelineStartMs", 0).coerceAtLeast(0),
+                        durationMs = duration,
+                        kind = enumValueOrDefault(effect.optString("kind"), VideoEffectKind.WARM),
+                        intensity = effect.optDouble("intensity", 0.6).toFloat().coerceIn(0f, 1f)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseTransition(json: JSONObject?): TransitionSpec {
+        if (json == null) return TransitionSpec()
+        return TransitionSpec(
+            kind = enumValueOrDefault(json.optString("kind"), TransitionKind.NONE),
+            durationMs = json.optInt("durationMs", TransitionSpec.DEFAULT_DURATION_MS)
+                .coerceIn(TransitionSpec.MIN_DURATION_MS, TransitionSpec.MAX_DURATION_MS)
+        )
+    }
+
     private fun toJson(project: Project): JSONObject {
         val assetArray = JSONArray()
         project.assets.forEach { asset ->
@@ -397,6 +435,7 @@ class ProjectRepository(context: Context) {
                     .put("sourceEndMs", clip.sourceEndMs)
                     .put("transform", transformToJson(clip.transform))
                     .put("timing", timingToJson(clip.timing))
+                    .put("transitionOut", transitionToJson(clip.transitionOut))
             )
         }
 
@@ -504,6 +543,18 @@ class ProjectRepository(context: Context) {
             )
         }
 
+        val effectClipArray = JSONArray()
+        project.effectClips.forEach { effect ->
+            effectClipArray.put(
+                JSONObject()
+                    .put("id", effect.id)
+                    .put("timelineStartMs", effect.timelineStartMs)
+                    .put("durationMs", effect.durationMs)
+                    .put("kind", effect.kind.name)
+                    .put("intensity", effect.intensity.toDouble())
+            )
+        }
+
         return JSONObject()
             .put("schemaVersion", SCHEMA_VERSION)
             .put("id", project.id)
@@ -517,6 +568,7 @@ class ProjectRepository(context: Context) {
             .put("overlayClips", overlayClipArray)
             .put("textClips", textClipArray)
             .put("captionSegments", captionSegmentArray)
+            .put("effectClips", effectClipArray)
             .put(
                 "canvas",
                 JSONObject()
@@ -529,6 +581,7 @@ class ProjectRepository(context: Context) {
             .put("selectedOverlayClipId", project.selectedOverlayClipId ?: "")
             .put("selectedTextClipId", project.selectedTextClipId ?: "")
             .put("selectedCaptionSegmentId", project.selectedCaptionSegmentId ?: "")
+            .put("selectedEffectClipId", project.selectedEffectClipId ?: "")
             .put("timelineZoom", project.timelineZoom.toDouble())
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
@@ -547,6 +600,10 @@ class ProjectRepository(context: Context) {
         .put("kind", animation.kind.name)
         .put("inDurationMs", animation.inDurationMs)
         .put("outDurationMs", animation.outDurationMs)
+
+    private fun transitionToJson(transition: TransitionSpec): JSONObject = JSONObject()
+        .put("kind", transition.kind.name)
+        .put("durationMs", transition.durationMs.coerceIn(TransitionSpec.MIN_DURATION_MS, TransitionSpec.MAX_DURATION_MS))
 
     private fun timingToJson(timing: ClipTiming): JSONObject {
         return JSONObject()
@@ -582,6 +639,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 13
+        private const val SCHEMA_VERSION = 14
     }
 }
