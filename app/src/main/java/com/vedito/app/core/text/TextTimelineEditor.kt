@@ -22,6 +22,7 @@ object TextTimelineEditor {
     fun normalizeStyle(style: TextStyle): TextStyle {
         return style.copy(
             fontSizeSp = style.fontSizeSp.coerceIn(12f, 96f),
+            letterSpacingEm = style.letterSpacingEm.coerceIn(-0.05f, 0.20f),
             alignment = when (style.alignment) {
                 TextAlignment.LEFT -> TextAlignment.LEFT
                 TextAlignment.CENTER -> TextAlignment.CENTER
@@ -44,7 +45,8 @@ object TextTimelineEditor {
             durationMs = duration,
             zIndex = clip.zIndex.coerceAtLeast(0),
             style = normalizeStyle(clip.style),
-            transform = normalizeTransform(clip.transform)
+            transform = normalizeTransform(clip.transform),
+            animation = TextMotion.normalize(clip.animation, duration)
         )
     }
 

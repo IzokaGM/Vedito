@@ -1,9 +1,15 @@
 # Vedito AI Handoff
 
-Before editing this repo, read **`PROJECT_CONTEXT.md`** then **`WORKPLAN.md`**.
+Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
-Current state: **Patch 12 / v0.12.0 / schema v12**. Native Android/Kotlin, package `com.vedito.app`. Patch 12 added a dedicated caption/subtitle track, manual segment editing, split, batch ±0.25s shift, caption-safe presets, SRT import/export, preview composition, persistence and undo/redo.
+Current locked state:
+- Vedito native Android/Kotlin, package `com.vedito.app`.
+- Current patch: **0.13.0 / schema v13**.
+- Do not copy Cutrim source; it was only a standalone-APK reference.
+- Do not reintroduce React Native/Metro.
+- Patch ZIPs must contain repo-root paths and **must not contain `.yml/.yaml`**.
+- New patch requires owner confirmation unless owner already said to start.
 
-Do not rewrite the native foundation, do not copy Cutrim/CapCut source/assets, do not put workflow YAML inside patch ZIPs, and do not create preview-only state that cannot later be consumed by the deterministic export compositor.
+Patch 13 adds reusable text presets, renderer-independent font-family keys, deterministic basic text/caption animation (`TextMotion`), expanded caption presets and persistence/undo coverage.
 
-Next planned milestone: **Patch 13 — Text / Caption Expansion Foundation**, unless the owner changes priority.
+Next planned milestone: **Patch 14 — Effects / Transitions Foundation**. Build renderer-independent state first so preview and future export use the same timing/parameter model.

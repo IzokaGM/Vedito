@@ -1,7 +1,6 @@
 package com.vedito.app.feature.editor.caption
 
 import android.content.Context
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
@@ -9,8 +8,10 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import com.vedito.app.R
 import com.vedito.app.core.caption.CaptionComposition
-import com.vedito.app.core.model.CaptionPreset
+import com.vedito.app.core.caption.CaptionStyleCatalog
 import com.vedito.app.core.model.CaptionSegment
+import com.vedito.app.core.text.TextMotion
+import com.vedito.app.feature.editor.text.TextTypefaceResolver
 import kotlin.math.roundToInt
 
 class CaptionPreviewController(
@@ -68,33 +69,25 @@ class CaptionPreviewController(
 
     private fun applySegment(node: Node, segment: CaptionSegment, selected: Boolean, stackIndex: Int) {
         node.text.text = segment.text
-        when (segment.preset) {
-            CaptionPreset.BOXED -> {
-                node.text.textSize = 24f
-                node.text.setTextColor(0xFFFFFFFF.toInt())
-                node.text.setBackgroundColor(0xA6000000.toInt())
-                node.text.typeface = Typeface.DEFAULT_BOLD
-            }
-            CaptionPreset.CLEAN -> {
-                node.text.textSize = 25f
-                node.text.setTextColor(0xFFFFFFFF.toInt())
-                node.text.setBackgroundColor(0x00000000)
-                node.text.typeface = Typeface.DEFAULT_BOLD
-            }
-            CaptionPreset.LARGE -> {
-                node.text.textSize = 31f
-                node.text.setTextColor(0xFFFFFFFF.toInt())
-                node.text.setBackgroundColor(0x88000000.toInt())
-                node.text.typeface = Typeface.DEFAULT_BOLD
-            }
+        val visual = CaptionStyleCatalog.resolve(segment.preset)
+        node.text.textSize = visual.fontSizeSp
+        node.text.setTextColor(visual.textColorArgb)
+        node.text.setBackgroundColor(visual.backgroundColorArgb)
+        node.text.typeface = TextTypefaceResolver.resolve(segment.fontFamily, visual.bold)
+        if (visual.shadowEnabled) {
+            node.text.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xDD000000.toInt())
+        } else {
+            node.text.setShadowLayer(0f, 0f, 0f, 0x00000000)
         }
         val params = node.text.layoutParams as FrameLayout.LayoutParams
-        val baseMargin = when (segment.preset) {
-            CaptionPreset.LARGE -> dp(28)
-            else -> dp(20)
-        }
-        params.bottomMargin = baseMargin + stackIndex.coerceAtMost(3) * dp(42)
+        params.bottomMargin = dp(visual.bottomMarginDp) + stackIndex.coerceAtMost(3) * dp(42)
         node.text.layoutParams = params
+        val localMs = (positionMs - segment.timelineStartMs).coerceAtLeast(0)
+        val motion = TextMotion.frame(segment.animation, localMs, segment.durationMs)
+        node.frame.alpha = motion.alphaMultiplier
+        node.frame.scaleX = motion.scaleMultiplier
+        node.frame.scaleY = motion.scaleMultiplier
+        node.frame.translationY = motion.translationYFraction * host.height
         node.frame.foreground = if (selected) selectionDrawable() else null
     }
 

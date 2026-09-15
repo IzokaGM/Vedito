@@ -1,6 +1,7 @@
 package com.vedito.app.core.caption
 
 import com.vedito.app.core.model.CaptionSegment
+import com.vedito.app.core.text.TextMotion
 
 object CaptionTimelineEditor {
     const val MIN_DURATION_MS = 250
@@ -14,7 +15,12 @@ object CaptionTimelineEditor {
         val available = (projectDurationMs - start).coerceAtLeast(0)
         if (available < MIN_DURATION_MS) return null
         val duration = segment.durationMs.coerceIn(MIN_DURATION_MS, available)
-        return segment.copy(text = text, timelineStartMs = start, durationMs = duration)
+        return segment.copy(
+            text = text,
+            timelineStartMs = start,
+            durationMs = duration,
+            animation = TextMotion.normalize(segment.animation, duration)
+        )
     }
 
     fun normalizeAll(segments: List<CaptionSegment>, projectDurationMs: Int): List<CaptionSegment> =

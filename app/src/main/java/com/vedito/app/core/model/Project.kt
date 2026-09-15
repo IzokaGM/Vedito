@@ -146,12 +146,44 @@ enum class TextAlignment {
     RIGHT
 }
 
+enum class TextFontFamily {
+    SANS,
+    SERIF,
+    MONO,
+    ROUNDED
+}
+
+enum class TextPreset {
+    CUSTOM,
+    CLASSIC,
+    TITLE,
+    MINIMAL,
+    IMPACT,
+    LOWER_THIRD
+}
+
+enum class TextAnimationKind {
+    NONE,
+    FADE,
+    POP,
+    SLIDE_UP
+}
+
+data class TextAnimationSpec(
+    val kind: TextAnimationKind = TextAnimationKind.NONE,
+    val inDurationMs: Int = 300,
+    val outDurationMs: Int = 250
+)
+
 data class TextStyle(
     val fontSizeSp: Float = 32f,
     val textColorArgb: Int = 0xFFFFFFFF.toInt(),
     val backgroundColorArgb: Int = 0x00000000,
     val bold: Boolean = true,
-    val alignment: TextAlignment = TextAlignment.CENTER
+    val alignment: TextAlignment = TextAlignment.CENTER,
+    val fontFamily: TextFontFamily = TextFontFamily.SANS,
+    val letterSpacingEm: Float = 0f,
+    val shadowEnabled: Boolean = false
 )
 
 data class TextTransform(
@@ -169,7 +201,9 @@ data class TextClip(
     val durationMs: Int,
     val zIndex: Int = 0,
     val style: TextStyle = TextStyle(),
-    val transform: TextTransform = TextTransform()
+    val transform: TextTransform = TextTransform(),
+    val preset: TextPreset = TextPreset.CUSTOM,
+    val animation: TextAnimationSpec = TextAnimationSpec()
 ) {
     val timelineEndMs: Int
         get() = timelineStartMs + durationMs
@@ -180,7 +214,9 @@ data class TextClip(
 enum class CaptionPreset {
     BOXED,
     CLEAN,
-    LARGE
+    LARGE,
+    YELLOW,
+    SOFT
 }
 
 data class CaptionSegment(
@@ -188,7 +224,9 @@ data class CaptionSegment(
     val text: String,
     val timelineStartMs: Int,
     val durationMs: Int,
-    val preset: CaptionPreset = CaptionPreset.BOXED
+    val preset: CaptionPreset = CaptionPreset.BOXED,
+    val fontFamily: TextFontFamily = TextFontFamily.SANS,
+    val animation: TextAnimationSpec = TextAnimationSpec()
 ) {
     val timelineEndMs: Int
         get() = timelineStartMs + durationMs

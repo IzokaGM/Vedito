@@ -396,6 +396,13 @@
             android:textColor="@color/vedito_muted"
             android:textSize="10sp" />
 
+        <com.vedito.app.feature.editor.caption.CaptionToolbarView
+            android:id="@+id/captionToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Caption font and animation controls" />
+
         <com.vedito.app.feature.editor.caption.CaptionTimelineView
             android:id="@+id/captionTimeline"
             android:layout_width="match_parent"

@@ -38,8 +38,10 @@ import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.model.TextAlignment
+import com.vedito.app.core.model.TextAnimationKind
+import com.vedito.app.core.model.TextFontFamily
+import com.vedito.app.core.model.TextPreset
 import com.vedito.app.core.model.TextClip
-import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.projects.ProjectRepository
 import com.vedito.app.core.caption.CaptionTimelineEditor
@@ -51,11 +53,14 @@ import com.vedito.app.core.timeline.FrameTimecode
 import com.vedito.app.core.timeline.TimelineEditor
 import com.vedito.app.core.timeline.TimelineIndex
 import com.vedito.app.core.timeline.TimelineMath
+import com.vedito.app.core.text.TextMotion
+import com.vedito.app.core.text.TextPresetCatalog
 import com.vedito.app.core.text.TextTimelineEditor
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
+import com.vedito.app.feature.editor.caption.CaptionToolbarView
 import com.vedito.app.feature.editor.overlay.OverlayPreviewController
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
 import com.vedito.app.feature.editor.text.TextPreviewController
@@ -239,6 +244,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.exportSrtButton.setOnClickListener { exportSrtPicker.launch("${project.title.ifBlank { "vedito" }}-captions.srt") }
         binding.captionShiftBackButton.setOnClickListener { shiftAllCaptions(-CAPTION_SHIFT_STEP_MS) }
         binding.captionShiftForwardButton.setOnClickListener { shiftAllCaptions(CAPTION_SHIFT_STEP_MS) }
+        binding.captionToolbar.onAction = ::handleCaptionAction
         binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.timingToolbar.onAction = ::handleTimingAction
@@ -739,21 +745,45 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 }
                 it.copy(transform = it.transform.copy(opacity = next))
             }
-            TextToolbarView.Action.FONT_DOWN -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp - 4f)) }
-            TextToolbarView.Action.FONT_UP -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp + 4f)) }
+            TextToolbarView.Action.FONT_DOWN -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp - 4f), preset = TextPreset.CUSTOM) }
+            TextToolbarView.Action.FONT_UP -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp + 4f), preset = TextPreset.CUSTOM) }
             TextToolbarView.Action.COLOR -> mutateSelectedText {
                 val current = TEXT_COLORS.indexOf(it.style.textColorArgb).takeIf { index -> index >= 0 } ?: 0
-                it.copy(style = it.style.copy(textColorArgb = TEXT_COLORS[(current + 1) % TEXT_COLORS.size]))
+                it.copy(style = it.style.copy(textColorArgb = TEXT_COLORS[(current + 1) % TEXT_COLORS.size]), preset = TextPreset.CUSTOM)
             }
             TextToolbarView.Action.BACKGROUND -> mutateSelectedText {
                 val current = TEXT_BACKGROUNDS.indexOf(it.style.backgroundColorArgb).takeIf { index -> index >= 0 } ?: 0
-                it.copy(style = it.style.copy(backgroundColorArgb = TEXT_BACKGROUNDS[(current + 1) % TEXT_BACKGROUNDS.size]))
+                it.copy(style = it.style.copy(backgroundColorArgb = TEXT_BACKGROUNDS[(current + 1) % TEXT_BACKGROUNDS.size]), preset = TextPreset.CUSTOM)
             }
-            TextToolbarView.Action.BOLD -> mutateSelectedText { it.copy(style = it.style.copy(bold = !it.style.bold)) }
+            TextToolbarView.Action.BOLD -> mutateSelectedText { it.copy(style = it.style.copy(bold = !it.style.bold), preset = TextPreset.CUSTOM) }
             TextToolbarView.Action.ALIGN -> mutateSelectedText {
                 val values = TextAlignment.values()
                 val current = values.indexOf(it.style.alignment).coerceAtLeast(0)
-                it.copy(style = it.style.copy(alignment = values[(current + 1) % values.size]))
+                it.copy(style = it.style.copy(alignment = values[(current + 1) % values.size]), preset = TextPreset.CUSTOM)
+            }
+            TextToolbarView.Action.PRESET -> mutateSelectedText { clip ->
+                val next = TextPresetCatalog.next(clip.preset)
+                clip.copy(
+                    preset = next,
+                    style = TextPresetCatalog.style(next),
+                    transform = TextPresetCatalog.transform(next, clip.transform)
+                )
+            }
+            TextToolbarView.Action.FONT_FAMILY -> mutateSelectedText { clip ->
+                val values = TextFontFamily.values()
+                val current = values.indexOf(clip.style.fontFamily).coerceAtLeast(0)
+                clip.copy(
+                    style = clip.style.copy(fontFamily = values[(current + 1) % values.size]),
+                    preset = TextPreset.CUSTOM
+                )
+            }
+            TextToolbarView.Action.ANIMATION -> mutateSelectedText { clip ->
+                val values = TextAnimationKind.values()
+                val current = values.indexOf(clip.animation.kind).coerceAtLeast(0)
+                clip.copy(animation = clip.animation.copy(kind = values[(current + 1) % values.size]))
+            }
+            TextToolbarView.Action.SHADOW -> mutateSelectedText { clip ->
+                clip.copy(style = clip.style.copy(shadowEnabled = !clip.style.shadowEnabled), preset = TextPreset.CUSTOM)
             }
             TextToolbarView.Action.RESET_TRANSFORM -> mutateSelectedText { it.copy(transform = TextTransform()) }
         }
@@ -768,7 +798,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val changed = change(current)
         val normalized = changed.copy(
             style = TextTimelineEditor.normalizeStyle(changed.style),
-            transform = TextTimelineEditor.normalizeTransform(changed.transform)
+            transform = TextTimelineEditor.normalizeTransform(changed.transform),
+            animation = TextMotion.normalize(changed.animation, changed.durationMs)
         )
         if (normalized == current) return
         previewPlayer.pause()
@@ -1960,8 +1991,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 timelineStartMs = start,
                 durationMs = duration,
                 zIndex = (textClips.maxOfOrNull { it.zIndex } ?: -1) + 1,
-                style = TextStyle(),
-                transform = TextTransform()
+                style = TextPresetCatalog.style(TextPreset.CLASSIC),
+                transform = TextTransform(),
+                preset = TextPreset.CLASSIC
             )
             textClips = sanitizeTextClips(textClips + clip)
             selectedTextClipId = clip.id
@@ -2021,7 +2053,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             return
         }
         val preview = selected.text.replace('\n', ' ').take(26)
-        binding.textSelectionLabel.text = "Text · $preview · T${selected.zIndex + 1} · ${selected.style.fontSizeSp.roundToInt()}sp"
+        binding.textSelectionLabel.text = "Text · $preview · T${selected.zIndex + 1} · ${selected.style.fontFamily.name.lowercase()} · ${selected.animation.kind.name.lowercase()}"
     }
 
     private fun finishTextGestureEdit() {
@@ -2176,6 +2208,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.captionShiftBackButton.alpha = if (hasCaptions) 1f else 0.38f
         binding.captionShiftForwardButton.isEnabled = hasCaptions
         binding.captionShiftForwardButton.alpha = if (hasCaptions) 1f else 0.38f
+        binding.captionToolbar.setState(selected)
+        binding.captionStyleButton.text = selected?.let { "Style ${it.preset.name.lowercase()}" } ?: "Style"
         if (selected == null) {
             binding.captionSelectionLabel.text = if (hasCaptions) {
                 "${captionSegments.size} captions · tap a segment to edit"
@@ -2185,7 +2219,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             return
         }
         val preview = selected.text.replace('\n', ' ').take(30)
-        binding.captionSelectionLabel.text = "Caption · $preview · ${formatDuration(selected.durationMs)} · ${selected.preset.name.lowercase()}"
+        binding.captionSelectionLabel.text = "Caption · $preview · ${formatDuration(selected.durationMs)} · ${selected.preset.name.lowercase()} · ${selected.fontFamily.name.lowercase()} · ${selected.animation.kind.name.lowercase()}"
     }
 
     private fun finishCaptionGestureEdit() {
@@ -2216,6 +2250,34 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         captionSegments = sanitizeCaptionSegments(captionSegments)
         selectedCaptionSegmentId = right.id
+        history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun handleCaptionAction(action: CaptionToolbarView.Action) {
+        val id = selectedCaptionSegmentId ?: return
+        val index = captionSegments.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = captionSegments[index]
+        val updated = when (action) {
+            CaptionToolbarView.Action.FONT_FAMILY -> {
+                val values = TextFontFamily.values()
+                val at = values.indexOf(current.fontFamily).coerceAtLeast(0)
+                current.copy(fontFamily = values[(at + 1) % values.size])
+            }
+            CaptionToolbarView.Action.ANIMATION -> {
+                val values = TextAnimationKind.values()
+                val at = values.indexOf(current.animation.kind).coerceAtLeast(0)
+                current.copy(animation = current.animation.copy(kind = values[(at + 1) % values.size]))
+            }
+        }
+        if (updated == current) return
+        val before = snapshot()
+        captionSegments = captionSegments.toMutableList().apply { this[index] = updated }
+        captionSegments = sanitizeCaptionSegments(captionSegments)
         history.record(before)
         renderCaptionState()
         updateCaptionUi()

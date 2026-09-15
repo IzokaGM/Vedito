@@ -65,9 +65,9 @@ Pending:
 - Retime/reverse audio model for retimed source extraction.
 
 ## Stage 5 — Text & captions
-**In progress; Patch 12 caption foundation completed.**
-Completed: timed manual text layers, dedicated caption segments, SRT import/export, segment move/trim/split, batch caption shift, caption-safe presets, preview composition, persistence + undo/redo.
-Pending: richer text/font presets, animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
+**Core manual text/caption foundation completed through Patch 13; advanced/AI text remains pending.**
+Completed: timed manual text layers, dedicated caption segments, SRT import/export, segment move/trim/split, batch caption shift, reusable text presets, shared font-family keys, caption-safe presets, deterministic basic Fade/Pop/Slide-Up animation, preview composition, persistence + undo/redo.
+Pending: custom/downloaded font packs, advanced/keyframed text animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
 **Pending.**
@@ -121,13 +121,21 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Text style + transform controls and native preview.
   - Renderer-independent `TextComposition` for future export reuse.
   - Schema v11 persistence + undo/redo.
-- **Patch 12:** Caption/Subtitles Foundation — current patch.
+- **Patch 12:** Caption/Subtitles Foundation — locked after CI/device verification.
   - Dedicated caption segment track and renderer-independent caption composition.
   - Manual add/edit/move/trim/split/delete.
   - SRT import/export and batch ±0.25s timing shift.
   - Caption-safe BOXED/CLEAN/LARGE presets.
   - Schema v12 persistence + undo/redo.
-- **Patch 13+:** Text/caption expansion, effects/transitions, pro visual tools, then production export and AI stages.
+- **Patch 13:** Text / Caption Expansion Foundation — current patch.
+  - Reusable free-text presets and renderer-independent font family keys.
+  - Basic deterministic None/Fade/Pop/Slide-Up animation via `TextMotion`.
+  - Expanded caption presets plus caption font/animation controls.
+  - Schema v13 persistence + undo/redo.
+- **Patch 14:** Effects / Transitions Foundation — next.
+  - Renderer-independent effect stack and transition timing/state.
+  - Initial real preview adjustments/filters and transition model.
+- **Patch 15+:** Pro visual tools, production export, advanced audio/text and AI stages.
 
 ## Release gates
 Before locking a major stage:

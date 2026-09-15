@@ -32,6 +32,10 @@ class TextToolbarView @JvmOverloads constructor(
         BACKGROUND,
         BOLD,
         ALIGN,
+        PRESET,
+        FONT_FAMILY,
+        ANIMATION,
+        SHADOW,
         RESET_TRANSFORM
     }
 
@@ -62,6 +66,10 @@ class TextToolbarView @JvmOverloads constructor(
         add(Action.BACKGROUND, "Text BG")
         add(Action.BOLD, "Bold")
         add(Action.ALIGN, "Align")
+        add(Action.PRESET, "Preset")
+        add(Action.FONT_FAMILY, "Font")
+        add(Action.ANIMATION, "Anim")
+        add(Action.SHADOW, "Shadow")
         add(Action.RESET_TRANSFORM, "Reset")
     }
 
@@ -79,6 +87,10 @@ class TextToolbarView @JvmOverloads constructor(
             buttons[Action.FONT_UP]?.text = "Font +"
             buttons[Action.BOLD]?.text = "Bold"
             buttons[Action.ALIGN]?.text = "Align"
+            buttons[Action.PRESET]?.text = "Preset"
+            buttons[Action.FONT_FAMILY]?.text = "Font"
+            buttons[Action.ANIMATION]?.text = "Anim"
+            buttons[Action.SHADOW]?.text = "Shadow"
             return
         }
         buttons[Action.SCALE_DOWN]?.text = "− ${(clip.transform.scale * 100).roundToInt()}%"
@@ -88,6 +100,10 @@ class TextToolbarView @JvmOverloads constructor(
         buttons[Action.FONT_UP]?.text = "+ ${clip.style.fontSizeSp.roundToInt()}sp"
         buttons[Action.BOLD]?.text = if (clip.style.bold) "Bold on" else "Bold off"
         buttons[Action.ALIGN]?.text = clip.style.alignment.name.lowercase().replaceFirstChar { it.uppercase() }
+        buttons[Action.PRESET]?.text = "Preset ${clip.preset.name.lowercase().replace('_', ' ')}"
+        buttons[Action.FONT_FAMILY]?.text = "Font ${clip.style.fontFamily.name.lowercase()}"
+        buttons[Action.ANIMATION]?.text = "Anim ${clip.animation.kind.name.lowercase().replace('_', ' ')}"
+        buttons[Action.SHADOW]?.text = if (clip.style.shadowEnabled) "Shadow on" else "Shadow off"
     }
 
     private fun add(action: Action, label: String) {

@@ -1,34 +1,34 @@
-# Vedito Patch 12 — Caption / Subtitles Foundation
+# Vedito Patch 13 — Text / Caption Expansion Foundation
 
-Version: **0.12.0** · schema **v12** · package **`com.vedito.app`**
+Native Android/Kotlin patch for `com.vedito.app`.
 
-## Added
-- Dedicated subtitle/caption segment model separate from free-form text layers.
-- Native caption preview layer with three safe presets: **BOXED / CLEAN / LARGE**.
-- Caption timeline with segment selection, drag-to-move and left/right trim.
-- Add/edit/delete caption segments manually.
-- Split selected caption at the playhead.
-- Batch shift all captions by **−0.25s / +0.25s** with project-bound clamping.
-- **SRT import** into the caption track.
-- **SRT export** from the current caption track.
-- Renderer-independent `CaptionComposition`, `CaptionTimelineEditor` and `SrtCodec` for future deterministic export reuse.
-- Caption edits participate in undo/redo, autosave and project reopen.
-- Existing schema v11 projects load with an empty caption track; schema is now v12.
+## Included
+- Free-text reusable presets: Classic, Title, Minimal, Impact, Lower Third.
+- Shared renderer-independent font family state: Sans, Serif, Mono, Rounded.
+- Text shadow + letter-spacing-ready style state.
+- Deterministic basic text animation state and preview: None, Fade, Pop, Slide Up.
+- Caption font selector and the same deterministic animation model.
+- Caption presets expanded with Yellow and Soft styles.
+- Undo/redo and project persistence cover all new text/caption state.
+- Schema v13 migration defaults keep older projects readable.
+- Version `0.13.0` / versionCode `13`.
 
-## Important behavior
-- Importing an SRT replaces the current caption track in one undoable operation.
-- Imported cues outside project duration are safely clamped/dropped by caption normalization.
-- Captions use absolute project time and remain independent of manual text layers.
-- Auto-caption speech recognition, word-level timing/karaoke, TTS and caption animation are intentionally not included yet.
+## Architecture rule
+`TextAnimationSpec` + `TextMotion` are renderer-independent. Future export must evaluate the same animation state rather than recreate timing rules inside Android Views.
+
+## Explicitly not included yet
+- Imported custom font files / online font packs.
+- Per-word/karaoke caption timing.
+- Auto-caption speech recognition.
+- Advanced keyframed text animation graphs.
+- Production export compositor.
 
 ## Acceptance path
-1. Open a project and add a caption at the playhead.
-2. Drag/trim it, edit its text and cycle caption style.
-3. Split a caption with the playhead inside the segment.
-4. Import a valid `.srt` file and verify cues appear at correct times.
-5. Shift the full caption track ±0.25s and verify no cue exits project bounds.
-6. Export SRT and re-import it; timing/text should round-trip correctly.
-7. Undo/redo add/edit/import/shift/split/delete operations.
-8. Close and reopen; caption state must persist.
+1. Open a project with video.
+2. Add text and cycle Preset / Font / Anim / Shadow.
+3. Scrub/play through the text in/out points and verify animation is deterministic.
+4. Add/select a caption; cycle Style, Font and Anim.
+5. Save/leave/reopen project and verify all states persist.
+6. Undo/redo style/font/animation edits.
 
-Static validation in this patch includes pure Kotlin caption/SRT round-trip tests, core compile checks and XML validation. GitHub Actions remains the full Android build verifier. This ZIP intentionally contains **no `.yml` / `.yaml` files**.
+Workflow YAML is intentionally not included in this ZIP.

@@ -1,7 +1,6 @@
 package com.vedito.app.feature.editor.text
 
 import android.content.Context
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
@@ -12,6 +11,7 @@ import com.vedito.app.core.model.TextAlignment
 import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.text.TextComposition
 import com.vedito.app.core.text.TextLayer
+import com.vedito.app.core.text.TextMotion
 import com.vedito.app.core.text.TextTimelineEditor
 import kotlin.math.roundToInt
 
@@ -77,19 +77,26 @@ class TextPreviewController(
         node.text.textSize = style.fontSizeSp
         node.text.setTextColor(style.textColorArgb)
         node.text.setBackgroundColor(style.backgroundColorArgb)
-        node.text.typeface = if (style.bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        node.text.typeface = TextTypefaceResolver.resolve(style.fontFamily, style.bold)
+        node.text.letterSpacing = style.letterSpacingEm
+        if (style.shadowEnabled) {
+            node.text.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xCC000000.toInt())
+        } else {
+            node.text.setShadowLayer(0f, 0f, 0f, 0x00000000)
+        }
         node.text.gravity = when (style.alignment) {
             TextAlignment.LEFT -> Gravity.START
             TextAlignment.CENTER -> Gravity.CENTER
             TextAlignment.RIGHT -> Gravity.END
         }
 
-        node.frame.alpha = transform.opacity
+        val motion = TextMotion.frame(clip.animation, layer.localTimelineMs, clip.durationMs)
+        node.frame.alpha = transform.opacity * motion.alphaMultiplier
         node.frame.rotation = transform.rotationDegrees
-        node.frame.scaleX = transform.scale
-        node.frame.scaleY = transform.scale
+        node.frame.scaleX = transform.scale * motion.scaleMultiplier
+        node.frame.scaleY = transform.scale * motion.scaleMultiplier
         node.frame.translationX = transform.positionX * host.width * 0.45f
-        node.frame.translationY = transform.positionY * host.height * 0.45f
+        node.frame.translationY = (transform.positionY * host.height * 0.45f) + (motion.translationYFraction * host.height)
         node.frame.foreground = if (selected) selectionDrawable() else null
     }
 

@@ -19,6 +19,10 @@ import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.model.TextAlignment
+import com.vedito.app.core.model.TextAnimationKind
+import com.vedito.app.core.model.TextAnimationSpec
+import com.vedito.app.core.model.TextFontFamily
+import com.vedito.app.core.model.TextPreset
 import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
@@ -321,7 +325,10 @@ class ProjectRepository(context: Context) {
                                 textColorArgb = styleJson?.optInt("textColorArgb", 0xFFFFFFFF.toInt()) ?: 0xFFFFFFFF.toInt(),
                                 backgroundColorArgb = styleJson?.optInt("backgroundColorArgb", 0x00000000) ?: 0x00000000,
                                 bold = styleJson?.optBoolean("bold", true) ?: true,
-                                alignment = enumValueOrDefault(styleJson?.optString("alignment").orEmpty(), TextAlignment.CENTER)
+                                alignment = enumValueOrDefault(styleJson?.optString("alignment").orEmpty(), TextAlignment.CENTER),
+                                fontFamily = enumValueOrDefault(styleJson?.optString("fontFamily").orEmpty(), TextFontFamily.SANS),
+                                letterSpacingEm = styleJson?.optDouble("letterSpacingEm", 0.0)?.toFloat() ?: 0f,
+                                shadowEnabled = styleJson?.optBoolean("shadowEnabled", false) ?: false
                             )
                         ),
                         transform = TextTimelineEditor.normalizeTransform(
@@ -332,7 +339,9 @@ class ProjectRepository(context: Context) {
                                 rotationDegrees = transformJson?.optDouble("rotationDegrees", 0.0)?.toFloat() ?: 0f,
                                 opacity = transformJson?.optDouble("opacity", 1.0)?.toFloat() ?: 1f
                             )
-                        )
+                        ),
+                        preset = enumValueOrDefault(clip.optString("preset"), TextPreset.CUSTOM),
+                        animation = parseTextAnimation(clip.optJSONObject("animation"))
                     )
                 )
             }
@@ -354,7 +363,9 @@ class ProjectRepository(context: Context) {
                         text = text,
                         timelineStartMs = segment.optInt("timelineStartMs", 0).coerceAtLeast(0),
                         durationMs = duration,
-                        preset = enumValueOrDefault(segment.optString("preset"), CaptionPreset.BOXED)
+                        preset = enumValueOrDefault(segment.optString("preset"), CaptionPreset.BOXED),
+                        fontFamily = enumValueOrDefault(segment.optString("fontFamily"), TextFontFamily.SANS),
+                        animation = parseTextAnimation(segment.optJSONObject("animation"))
                     )
                 )
             }
@@ -461,6 +472,9 @@ class ProjectRepository(context: Context) {
                             .put("backgroundColorArgb", clip.style.backgroundColorArgb)
                             .put("bold", clip.style.bold)
                             .put("alignment", clip.style.alignment.name)
+                            .put("fontFamily", clip.style.fontFamily.name)
+                            .put("letterSpacingEm", clip.style.letterSpacingEm.toDouble())
+                            .put("shadowEnabled", clip.style.shadowEnabled)
                     )
                     .put(
                         "transform",
@@ -471,6 +485,8 @@ class ProjectRepository(context: Context) {
                             .put("rotationDegrees", clip.transform.rotationDegrees.toDouble())
                             .put("opacity", clip.transform.opacity.toDouble())
                     )
+                    .put("preset", clip.preset.name)
+                    .put("animation", textAnimationToJson(clip.animation))
             )
         }
 
@@ -483,6 +499,8 @@ class ProjectRepository(context: Context) {
                     .put("timelineStartMs", segment.timelineStartMs)
                     .put("durationMs", segment.durationMs)
                     .put("preset", segment.preset.name)
+                    .put("fontFamily", segment.fontFamily.name)
+                    .put("animation", textAnimationToJson(segment.animation))
             )
         }
 
@@ -515,6 +533,20 @@ class ProjectRepository(context: Context) {
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
 
+
+    private fun parseTextAnimation(json: JSONObject?): TextAnimationSpec {
+        if (json == null) return TextAnimationSpec()
+        return TextAnimationSpec(
+            kind = enumValueOrDefault(json.optString("kind"), TextAnimationKind.NONE),
+            inDurationMs = json.optInt("inDurationMs", 300),
+            outDurationMs = json.optInt("outDurationMs", 250)
+        )
+    }
+
+    private fun textAnimationToJson(animation: TextAnimationSpec): JSONObject = JSONObject()
+        .put("kind", animation.kind.name)
+        .put("inDurationMs", animation.inDurationMs)
+        .put("outDurationMs", animation.outDurationMs)
 
     private fun timingToJson(timing: ClipTiming): JSONObject {
         return JSONObject()
@@ -550,6 +582,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 12
+        private const val SCHEMA_VERSION = 13
     }
 }
