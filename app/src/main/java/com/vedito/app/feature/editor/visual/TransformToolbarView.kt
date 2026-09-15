@@ -11,6 +11,8 @@ import android.widget.TextView
 import com.vedito.app.R
 import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.ClipTransform
+import com.vedito.app.core.model.TransformKeyframeSet
+import com.vedito.app.core.keyframe.KeyframeEngine
 import kotlin.math.roundToInt
 
 class TransformToolbarView @JvmOverloads constructor(
@@ -19,6 +21,11 @@ class TransformToolbarView @JvmOverloads constructor(
 ) : HorizontalScrollView(context, attrs) {
 
     enum class Action {
+        KEYFRAME_TOGGLE,
+        KEYFRAME_PREVIOUS,
+        KEYFRAME_NEXT,
+        KEYFRAME_EASING,
+        KEYFRAME_CLEAR,
         SCALE_DOWN,
         SCALE_UP,
         MOVE_LEFT,
@@ -54,6 +61,11 @@ class TransformToolbarView @JvmOverloads constructor(
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         addView(strip, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        add(Action.KEYFRAME_TOGGLE, "◇ Add KF")
+        add(Action.KEYFRAME_PREVIOUS, "◀ KF")
+        add(Action.KEYFRAME_NEXT, "KF ▶")
+        add(Action.KEYFRAME_EASING, "Ease")
+        add(Action.KEYFRAME_CLEAR, "Clear KF")
         add(Action.SCALE_DOWN, "Scale −")
         add(Action.SCALE_UP, "Scale +")
         add(Action.MOVE_LEFT, "←")
@@ -75,11 +87,26 @@ class TransformToolbarView @JvmOverloads constructor(
         add(Action.RESET_TRANSFORM, "Reset")
     }
 
-    fun setState(transform: ClipTransform?, canvas: CanvasSettings) {
+    fun setState(
+        transform: ClipTransform?,
+        canvas: CanvasSettings,
+        keyframes: TransformKeyframeSet? = null,
+        localTimeMs: Int = 0
+    ) {
         val enabled = transform != null
+        val hasKeyframes = keyframes?.isEmpty == false
+        val atKeyframe = keyframes?.let { KeyframeEngine.hasAt(it, localTimeMs) } == true
         buttons.forEach { (action, view) ->
             val isCanvasAction = action == Action.CANVAS_RATIO || action == Action.CANVAS_BACKGROUND
-            view.isEnabled = enabled || isCanvasAction
+            val keyframeNavigation = action == Action.KEYFRAME_PREVIOUS ||
+                action == Action.KEYFRAME_NEXT ||
+                action == Action.KEYFRAME_EASING ||
+                action == Action.KEYFRAME_CLEAR
+            view.isEnabled = when {
+                isCanvasAction -> true
+                keyframeNavigation -> enabled && hasKeyframes
+                else -> enabled
+            }
             view.alpha = if (view.isEnabled) 1f else 0.35f
         }
 
@@ -95,6 +122,12 @@ class TransformToolbarView @JvmOverloads constructor(
             buttons[Action.FIT_TOGGLE]?.text = "Fit"
         }
 
+        buttons[Action.KEYFRAME_TOGGLE]?.text = if (atKeyframe) "◆ Remove KF" else "◇ Add KF"
+        val easing = keyframes?.let { KeyframeEngine.easingAt(it, localTimeMs) }
+        buttons[Action.KEYFRAME_EASING]?.text = when (easing) {
+            null -> "Ease"
+            else -> "Ease ${easing.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }}"
+        }
         buttons[Action.CANVAS_RATIO]?.text = "Canvas ${canvas.aspect.label}"
         buttons[Action.CANVAS_BACKGROUND]?.text = "BG ${canvas.background.label}"
     }

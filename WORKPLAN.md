@@ -39,8 +39,14 @@ Next:
 - Later speed curves built on `ClipTimeMap`.
 
 ## Stage 3 — Pro visual editing
-**Pending.**
-- Keyframes + easing/graphs.
+**In progress — keyframe foundation completed in Patch 15.**
+Completed:
+- Renderer-independent clip/overlay transform keyframes.
+- Linear/Ease In/Ease Out/Ease In-Out/Hold interpolation.
+- Real preview evaluation plus timeline-safe split/trim/speed handling.
+
+Pending:
+- Advanced keyframe graph/custom Bezier editor and broader property coverage.
 - Masks + feather.
 - Chroma key.
 - Motion/object tracking.
@@ -142,15 +148,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Basic deterministic None/Fade/Pop/Slide-Up animation via `TextMotion`.
   - Expanded caption presets plus caption font/animation controls.
   - Schema v13 persistence + undo/redo.
-- **Patch 14:** Effects / Transitions Foundation — current patch.
+- **Patch 14:** Effects / Transitions Foundation — locked after CI/device verification.
   - Dedicated timed FX track with move/trim and intensity.
   - Warm/Cool/Vignette/Dream/Grain real native preview overlays.
   - Fade-Black/Flash/Wipe clip-boundary transition model + duration.
   - Renderer-independent `EffectComposition`, persistence and undo/redo.
-- **Patch 15:** Keyframe Engine Foundation — next.
-  - Renderer-independent keyframe tracks, interpolation and easing.
-  - First integration with clip/overlay transforms.
-- **Patch 16+:** masks/chroma/color/export, advanced audio/text, AI/templates/cloud.
+- **Patch 15:** Keyframe Engine Foundation — current patch.
+  - Renderer-independent local transform keyframe tracks for main clips and overlays.
+  - Scale/position/rotation/opacity interpolation with Linear/Ease In/Ease Out/Ease In-Out/Hold.
+  - Real preview evaluation plus add/remove/prev/next/easing controls.
+  - Timeline-safe split/trim/uniform-speed remapping, persistence and undo/redo.
+- **Patch 16:** Masks / Chroma Foundation — next.
+  - Renderer-independent mask + feather/invert state and first mask preview.
+  - Chroma-key parameter model and preview foundation.
+- **Patch 17+:** tracking/stabilization/color/export, advanced audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

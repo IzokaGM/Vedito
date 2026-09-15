@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.14.0 / versionCode 14**
+- Current patch: **0.15.0 / versionCode 15**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -47,6 +47,8 @@ Current external CI concept:
 - `Clip`: source trim + `ClipTransform` + `ClipTiming` + outgoing `TransitionSpec`.
 - `ClipTiming`: speed, playback mode (FORWARD/REVERSE/FREEZE), freeze source frame/duration.
 - `ClipTimeMap`: canonical source↔timeline time mapping. Future speed curves/export must build on this rather than duplicating timing math in UI.
+- `TransformKeyframeSet` / `FloatKeyframe` / `KeyframeEasing`: local-timeline transform animation state for scale/position/rotation/opacity.
+- `KeyframeEngine`: canonical interpolation/easing evaluator shared by preview now and future export; keyframes are local to their owning clip/layer.
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
 - `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
 - `OverlayComposition`: renderer-independent active-layer resolver shared concept for preview now and deterministic export later.
@@ -61,10 +63,11 @@ Current external CI concept:
 - `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v14.
+- `core/projects/ProjectRepository.kt` — persistence, schema v15.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
+- `core/keyframe/KeyframeEngine.kt` — renderer-independent transform keyframe interpolation, easing, timing remap/split helpers.
 - `feature/editor/timeline/TimelineScrubberView.kt` — scrub/zoom/trim/reorder UI, timing-aware trim.
 - `feature/editor/player/PreviewPlayer.kt` — forward speed preview plus seek-driven reverse/freeze playback foundation.
 - `feature/editor/timing/TimingToolbarView.kt` — speed/freeze/reverse controls.
@@ -93,14 +96,16 @@ Important modules:
 - Patch 12: dedicated caption segments, native caption preview/timeline, manual segment editing/split, batch ±0.25s shift, SRT import/export, renderer-independent caption composition, undo/redo and schema v12 persistence.
 - Patch 13: reusable free-text presets, shared font-family keys, shadow/letter-spacing style state, deterministic Fade/Pop/Slide-Up text motion, expanded caption presets plus caption font/animation controls, undo/redo and schema v13 persistence.
 - Patch 14: timed FX track, real Warm/Cool/Vignette/Dream/Grain native preview overlays, effect intensity, Fade-Black/Flash/Wipe clip-boundary transitions, renderer-independent `EffectComposition`, transition-safe split/duplicate semantics, undo/redo and schema v14 persistence.
+- Patch 15: renderer-independent transform keyframes for main clips + overlays, deterministic interpolation/easing, real preview evaluation, keyframe navigation/edit controls, timeline-safe split/trim/speed handling, undo/redo and schema v15 persistence.
 
-## Patch 14 behavior/limits
-- Effects are independent timed segments; they can overlap and are resolved from project timeline time.
-- Current effect kinds are lightweight native compositing effects: WARM, COOL, VIGNETTE, DREAM and GRAIN. They are real preview behavior but are not the final shader-grade color engine.
-- Outgoing clip transitions are stored as renderer-independent `TransitionSpec` state. Current transitions are NONE, FADE_BLACK, FLASH_WHITE and WIPE.
-- Transition preview spans both sides of a clip boundary using one deterministic envelope. True source-to-source cross-dissolve requires the later dual-decoder/export compositor.
-- Splitting/duplicating a clip avoids unintentionally duplicating the old outgoing transition across the new internal boundary.
-- Effect and transition edits persist and participate in undo/redo.
+## Patch 15 behavior/limits
+- Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
+- Easing presets are LINEAR, EASE_IN, EASE_OUT, EASE_IN_OUT and HOLD; no custom Bezier graph editor yet.
+- Preview uses `KeyframeEngine.evaluate(...)` directly during scrub/playback. Export must reuse the same model/evaluator.
+- Once keyframes exist on the selected clip/layer, scale/move/rotate/opacity edits update/create the keyframe at the current local time.
+- Clip split, source trim and uniform speed changes preserve/remap keyframe timing. Freeze insertion bakes the evaluated transform into the new hold clip.
+- Overlay left/right trim keeps local keyframe timing bounded to the surviving layer duration.
+- Crop, flip and fit/fill are still static transform state in Patch 15.
 
 ## Explicitly not completed
 - Speed curves UI/easing.
@@ -109,15 +114,15 @@ Important modules:
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
-- Keyframes/masks/chroma/tracking/stabilization.
+- Masks/chroma/tracking/stabilization; keyframes exist for clip/overlay transform only, with advanced graphs/property coverage still pending.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
 ## Next milestone
-**Patch 15 — Keyframe Engine Foundation**
-- renderer-independent keyframe tracks + interpolation/easing,
-- first application to clip/overlay transform properties,
-- preview evaluation from the same state future export will consume,
-- undo/redo + persistence + timeline-safe keyframe timing.
+**Patch 16 — Masks / Chroma Foundation**
+- renderer-independent mask state + feather/invert,
+- first practical rectangular/ellipse mask preview path,
+- chroma-key parameter model + preview foundation,
+- persistence + undo/redo with future GPU/export compatibility.
 
 See `WORKPLAN.md` for the full roadmap.

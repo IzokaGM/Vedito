@@ -3,6 +3,7 @@ package com.vedito.app.core.overlay
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
+import com.vedito.app.core.keyframe.KeyframeEngine
 import kotlin.math.max
 
 object OverlayTimelineEditor {
@@ -31,7 +32,8 @@ object OverlayTimelineEditor {
             timelineStartMs = start,
             durationMs = duration,
             sourceStartMs = sourceStart,
-            zIndex = clip.zIndex.coerceAtLeast(0)
+            zIndex = clip.zIndex.coerceAtLeast(0),
+            keyframes = KeyframeEngine.normalize(clip.keyframes, duration)
         )
     }
 
@@ -54,8 +56,21 @@ object OverlayTimelineEditor {
             max(0, clip.sourceStartMs + delta)
         } else 0
         val duration = oldEnd - start
-        return normalized(clip.copy(timelineStartMs = start, durationMs = duration, sourceStartMs = sourceStart), asset, projectDurationMs)
-            ?: clip
+        val shiftedKeyframes = KeyframeEngine.shiftForLeftTrim(
+            clip.keyframes,
+            removedMs = (start - clip.timelineStartMs).coerceAtLeast(0),
+            newDurationMs = duration
+        )
+        return normalized(
+            clip.copy(
+                timelineStartMs = start,
+                durationMs = duration,
+                sourceStartMs = sourceStart,
+                keyframes = shiftedKeyframes
+            ),
+            asset,
+            projectDurationMs
+        ) ?: clip
     }
 
     fun trimRight(
@@ -70,7 +85,11 @@ object OverlayTimelineEditor {
             val maxEnd = clip.timelineStartMs + (asset.durationMs - clip.sourceStartMs).coerceAtLeast(MIN_DURATION_MS)
             end = end.coerceAtMost(maxEnd)
         }
-        return clip.copy(durationMs = (end - clip.timelineStartMs).coerceAtLeast(MIN_DURATION_MS))
+        val duration = (end - clip.timelineStartMs).coerceAtLeast(MIN_DURATION_MS)
+        return clip.copy(
+            durationMs = duration,
+            keyframes = KeyframeEngine.normalize(clip.keyframes, duration)
+        )
     }
 
     fun raise(clips: List<OverlayClip>, id: String): List<OverlayClip> {

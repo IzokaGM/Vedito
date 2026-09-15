@@ -4,6 +4,8 @@ import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.TransitionSpec
+import com.vedito.app.core.keyframe.KeyframeEngine
+import com.vedito.app.core.model.TransformKeyframeSet
 import java.util.UUID
 
 object TimelineEditor {
@@ -52,8 +54,20 @@ object TimelineEditor {
             }
         }
 
-        val normalizedPair = pair.first.copy(transitionOut = TransitionSpec()) to
-            pair.second.copy(transitionOut = original.transitionOut)
+        val splitKeyframes = KeyframeEngine.split(
+            base = original.transform,
+            keyframes = original.keyframes,
+            splitLocalMs = location.offsetMs,
+            leftDurationMs = pair.first.durationMs,
+            rightDurationMs = pair.second.durationMs
+        )
+        val normalizedPair = pair.first.copy(
+            transitionOut = TransitionSpec(),
+            keyframes = splitKeyframes.first
+        ) to pair.second.copy(
+            transitionOut = original.transitionOut,
+            keyframes = splitKeyframes.second
+        )
         val next = clips.toMutableList().apply {
             removeAt(location.clipIndex)
             add(location.clipIndex, normalizedPair.second)
@@ -83,8 +97,10 @@ object TimelineEditor {
         val max = assetDurationMs.takeIf { it > 1 } ?: Int.MAX_VALUE
         val safeStart = startMs.coerceIn(0, max - 1)
         val safeEnd = endMs.coerceIn(safeStart + 1, max)
+        val trimmed = current.copy(sourceStartMs = safeStart, sourceEndMs = safeEnd)
+        val remapped = trimmed.copy(keyframes = KeyframeEngine.remapForClipTrim(current, trimmed))
         return clips.toMutableList().apply {
-            this[index] = current.copy(sourceStartMs = safeStart, sourceEndMs = safeEnd)
+            this[index] = remapped
         }
     }
 
@@ -127,8 +143,10 @@ object TimelineEditor {
         if (clip.timing.mode == ClipPlaybackMode.FREEZE) return clips
         val safe = speed.coerceIn(ClipTiming.MIN_SPEED, ClipTiming.MAX_SPEED)
         if (clip.timing.speed == safe) return clips
+        val retimed = clip.copy(timing = clip.timing.copy(speed = safe))
+        val keyframes = KeyframeEngine.rescaleDuration(clip.keyframes, clip.durationMs, retimed.durationMs)
         return clips.toMutableList().apply {
-            this[index] = clip.copy(timing = clip.timing.copy(speed = safe))
+            this[index] = retimed.copy(keyframes = keyframes)
         }
     }
 
@@ -148,8 +166,16 @@ object TimelineEditor {
         val location = TimelineMath.locate(clips, playheadMs) ?: return null
         val source = ClipTimeMap.sourcePositionAtTimelineOffset(location.clip, location.offsetMs)
         val safeSource = source.coerceIn(location.clip.sourceStartMs, (location.clip.sourceEndMs - 1).coerceAtLeast(location.clip.sourceStartMs))
+        val freezeTransform = KeyframeEngine.evaluate(
+            location.clip.transform,
+            location.clip.keyframes,
+            location.offsetMs,
+            location.clip.durationMs
+        )
         val freeze = location.clip.copy(
             id = UUID.randomUUID().toString(),
+            transform = freezeTransform,
+            keyframes = TransformKeyframeSet(),
             transitionOut = TransitionSpec(),
             timing = ClipTiming(
                 speed = 1f,

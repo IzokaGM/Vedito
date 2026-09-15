@@ -131,7 +131,7 @@ class OverlayPreviewController(
     }
 
     private fun applyLayer(node: Node, layer: OverlayLayer, selected: Boolean) {
-        val transform = VisualTransformMath.normalize(layer.clip.transform)
+        val transform = VisualTransformMath.normalize(layer.transform)
         val frame = node.frame
         frame.alpha = transform.opacity
         frame.rotation = transform.rotationDegrees

@@ -14,6 +14,9 @@ import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.EffectClip
+import com.vedito.app.core.model.FloatKeyframe
+import com.vedito.app.core.model.KeyframeEasing
+import com.vedito.app.core.model.TransformKeyframeSet
 import com.vedito.app.core.model.TransitionKind
 import com.vedito.app.core.model.TransitionSpec
 import com.vedito.app.core.model.VideoEffectKind
@@ -31,6 +34,7 @@ import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
+import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.text.TextTimelineEditor
 import org.json.JSONArray
@@ -160,9 +164,12 @@ class ProjectRepository(context: Context) {
                         sourceStartMs = clip.optInt("sourceStartMs", 0),
                         sourceEndMs = clip.optInt("sourceEndMs", 0),
                         transform = parseClipTransform(clip.optJSONObject("transform")),
+                        keyframes = parseTransformKeyframes(clip.optJSONObject("keyframes")),
                         timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0)),
                         transitionOut = parseTransition(clip.optJSONObject("transitionOut"))
-                    )
+                    ).let { parsed ->
+                        parsed.copy(keyframes = KeyframeEngine.normalize(parsed.keyframes, parsed.durationMs))
+                    }
                 )
             }
         }
@@ -302,8 +309,11 @@ class ProjectRepository(context: Context) {
                         durationMs = duration,
                         sourceStartMs = clip.optInt("sourceStartMs", 0).coerceAtLeast(0),
                         zIndex = clip.optInt("zIndex", 0).coerceAtLeast(0),
-                        transform = parseClipTransform(clip.optJSONObject("transform"))
-                    )
+                        transform = parseClipTransform(clip.optJSONObject("transform")),
+                        keyframes = parseTransformKeyframes(clip.optJSONObject("keyframes"))
+                    ).let { parsed ->
+                        parsed.copy(keyframes = KeyframeEngine.normalize(parsed.keyframes, parsed.durationMs))
+                    }
                 )
             }
         }
@@ -434,6 +444,7 @@ class ProjectRepository(context: Context) {
                     .put("sourceStartMs", clip.sourceStartMs)
                     .put("sourceEndMs", clip.sourceEndMs)
                     .put("transform", transformToJson(clip.transform))
+                    .put("keyframes", transformKeyframesToJson(clip.keyframes))
                     .put("timing", timingToJson(clip.timing))
                     .put("transitionOut", transitionToJson(clip.transitionOut))
             )
@@ -491,6 +502,7 @@ class ProjectRepository(context: Context) {
                     .put("sourceStartMs", clip.sourceStartMs)
                     .put("zIndex", clip.zIndex)
                     .put("transform", transformToJson(clip.transform))
+                    .put("keyframes", transformKeyframesToJson(clip.keyframes))
             )
         }
 
@@ -587,6 +599,56 @@ class ProjectRepository(context: Context) {
     }
 
 
+    private fun parseTransformKeyframes(json: JSONObject?): TransformKeyframeSet {
+        if (json == null) return TransformKeyframeSet()
+
+        fun parseTrack(name: String): List<FloatKeyframe> {
+            val array = json.optJSONArray(name) ?: return emptyList()
+            return buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val value = item.optDouble("value", Double.NaN).toFloat()
+                    if (!value.isFinite()) continue
+                    add(
+                        FloatKeyframe(
+                            timeMs = item.optInt("timeMs", 0).coerceAtLeast(0),
+                            value = value,
+                            easing = enumValueOrDefault(item.optString("easing"), KeyframeEasing.LINEAR)
+                        )
+                    )
+                }
+            }
+        }
+
+        return TransformKeyframeSet(
+            scale = parseTrack("scale"),
+            positionX = parseTrack("positionX"),
+            positionY = parseTrack("positionY"),
+            rotationDegrees = parseTrack("rotationDegrees"),
+            opacity = parseTrack("opacity")
+        )
+    }
+
+    private fun transformKeyframesToJson(keyframes: TransformKeyframeSet): JSONObject {
+        fun track(points: List<FloatKeyframe>): JSONArray = JSONArray().apply {
+            points.sortedBy { it.timeMs }.forEach { point ->
+                put(
+                    JSONObject()
+                        .put("timeMs", point.timeMs.coerceAtLeast(0))
+                        .put("value", point.value.toDouble())
+                        .put("easing", point.easing.name)
+                )
+            }
+        }
+
+        return JSONObject()
+            .put("scale", track(keyframes.scale))
+            .put("positionX", track(keyframes.positionX))
+            .put("positionY", track(keyframes.positionY))
+            .put("rotationDegrees", track(keyframes.rotationDegrees))
+            .put("opacity", track(keyframes.opacity))
+    }
+
     private fun parseTextAnimation(json: JSONObject?): TextAnimationSpec {
         if (json == null) return TextAnimationSpec()
         return TextAnimationSpec(
@@ -639,6 +701,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 14
+        private const val SCHEMA_VERSION = 15
     }
 }

@@ -2,6 +2,41 @@ package com.vedito.app.core.model
 
 import kotlin.math.roundToInt
 
+
+
+enum class KeyframeEasing {
+    LINEAR,
+    EASE_IN,
+    EASE_OUT,
+    EASE_IN_OUT,
+    HOLD
+}
+
+data class FloatKeyframe(
+    val timeMs: Int,
+    val value: Float,
+    val easing: KeyframeEasing = KeyframeEasing.LINEAR
+)
+
+data class TransformKeyframeSet(
+    val scale: List<FloatKeyframe> = emptyList(),
+    val positionX: List<FloatKeyframe> = emptyList(),
+    val positionY: List<FloatKeyframe> = emptyList(),
+    val rotationDegrees: List<FloatKeyframe> = emptyList(),
+    val opacity: List<FloatKeyframe> = emptyList()
+) {
+    val isEmpty: Boolean
+        get() = scale.isEmpty() && positionX.isEmpty() && positionY.isEmpty() &&
+            rotationDegrees.isEmpty() && opacity.isEmpty()
+
+    val pointCount: Int
+        get() = sequenceOf(scale, positionX, positionY, rotationDegrees, opacity)
+            .flatten()
+            .map { it.timeMs }
+            .distinct()
+            .count()
+}
+
 enum class ClipFitMode {
     FIT,
     FILL
@@ -111,6 +146,7 @@ data class Clip(
     val sourceStartMs: Int,
     val sourceEndMs: Int,
     val transform: ClipTransform = ClipTransform(),
+    val keyframes: TransformKeyframeSet = TransformKeyframeSet(),
     val timing: ClipTiming = ClipTiming(),
     val transitionOut: TransitionSpec = TransitionSpec()
 ) {
@@ -153,7 +189,8 @@ data class OverlayClip(
     val durationMs: Int,
     val sourceStartMs: Int = 0,
     val zIndex: Int = 0,
-    val transform: ClipTransform = ClipTransform(scale = 0.45f, fitMode = ClipFitMode.FIT)
+    val transform: ClipTransform = ClipTransform(scale = 0.45f, fitMode = ClipFitMode.FIT),
+    val keyframes: TransformKeyframeSet = TransformKeyframeSet()
 ) {
     val timelineEndMs: Int
         get() = timelineStartMs + durationMs

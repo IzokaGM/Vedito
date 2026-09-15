@@ -33,6 +33,8 @@ import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.EffectClip
+import com.vedito.app.core.model.KeyframeEasing
+import com.vedito.app.core.model.TransformKeyframeSet
 import com.vedito.app.core.model.TransitionKind
 import com.vedito.app.core.model.TransitionSpec
 import com.vedito.app.core.model.VideoEffectKind
@@ -52,6 +54,7 @@ import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.caption.SrtCodec
 import com.vedito.app.core.effect.EffectComposition
 import com.vedito.app.core.effect.EffectTimelineEditor
+import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
@@ -674,7 +677,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         } else {
             ClipTimeMap.timelineOffsetForSourcePosition(clip, sourcePositionMs)
         }
-        previewPlayer.setVisualTransform(clip.transform)
+        previewPlayer.setVisualTransform(
+            KeyframeEngine.evaluate(clip.transform, clip.keyframes, timelineOffset, clip.durationMs)
+        )
         previewPlayer.configureTiming(
             mode = clip.timing.mode,
             speed = clip.timing.speed,
@@ -859,16 +864,21 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun handleVisualAction(action: TransformToolbarView.Action) {
         when (action) {
-            TransformToolbarView.Action.SCALE_DOWN -> mutateActiveTransform { it.copy(scale = it.scale - 0.1f) }
-            TransformToolbarView.Action.SCALE_UP -> mutateActiveTransform { it.copy(scale = it.scale + 0.1f) }
-            TransformToolbarView.Action.MOVE_LEFT -> mutateActiveTransform { it.copy(positionX = it.positionX - POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_RIGHT -> mutateActiveTransform { it.copy(positionX = it.positionX + POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_UP -> mutateActiveTransform { it.copy(positionY = it.positionY - POSITION_STEP) }
-            TransformToolbarView.Action.MOVE_DOWN -> mutateActiveTransform { it.copy(positionY = it.positionY + POSITION_STEP) }
-            TransformToolbarView.Action.ROTATE_90 -> mutateActiveTransform { it.copy(rotationDegrees = it.rotationDegrees + 90f) }
+            TransformToolbarView.Action.KEYFRAME_TOGGLE -> toggleVisualKeyframe()
+            TransformToolbarView.Action.KEYFRAME_PREVIOUS -> jumpVisualKeyframe(previous = true)
+            TransformToolbarView.Action.KEYFRAME_NEXT -> jumpVisualKeyframe(previous = false)
+            TransformToolbarView.Action.KEYFRAME_EASING -> cycleVisualKeyframeEasing()
+            TransformToolbarView.Action.KEYFRAME_CLEAR -> clearVisualKeyframes()
+            TransformToolbarView.Action.SCALE_DOWN -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(scale = it.scale - 0.1f) }
+            TransformToolbarView.Action.SCALE_UP -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(scale = it.scale + 0.1f) }
+            TransformToolbarView.Action.MOVE_LEFT -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(positionX = it.positionX - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_RIGHT -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(positionX = it.positionX + POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_UP -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(positionY = it.positionY - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_DOWN -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(positionY = it.positionY + POSITION_STEP) }
+            TransformToolbarView.Action.ROTATE_90 -> mutateActiveTransform(animateIfKeyframed = true) { it.copy(rotationDegrees = it.rotationDegrees + 90f) }
             TransformToolbarView.Action.FLIP_HORIZONTAL -> mutateActiveTransform { it.copy(flipHorizontal = !it.flipHorizontal) }
             TransformToolbarView.Action.FLIP_VERTICAL -> mutateActiveTransform { it.copy(flipVertical = !it.flipVertical) }
-            TransformToolbarView.Action.OPACITY_CYCLE -> mutateActiveTransform {
+            TransformToolbarView.Action.OPACITY_CYCLE -> mutateActiveTransform(animateIfKeyframed = true) {
                 val next = when {
                     it.opacity > 0.76f -> 0.75f
                     it.opacity > 0.51f -> 0.50f
@@ -897,23 +907,40 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 val next = values[(values.indexOf(it.background) + 1) % values.size]
                 it.copy(background = next)
             }
-            TransformToolbarView.Action.RESET_TRANSFORM -> mutateActiveTransform { if (selectedOverlayClipId != null) ClipTransform(scale = 0.45f) else ClipTransform() }
+            TransformToolbarView.Action.RESET_TRANSFORM -> mutateActiveTransform {
+                if (selectedOverlayClipId != null) ClipTransform(scale = 0.45f) else ClipTransform()
+            }
         }
     }
 
-    private fun mutateActiveTransform(change: (ClipTransform) -> ClipTransform) {
+    private fun mutateActiveTransform(
+        animateIfKeyframed: Boolean = false,
+        change: (ClipTransform) -> ClipTransform
+    ) {
         val overlayId = selectedOverlayClipId
         if (overlayId != null) {
             val index = overlayClips.indexOfFirst { it.id == overlayId }
             if (index < 0) return
             val before = snapshot()
             val current = overlayClips[index]
-            val nextTransform = VisualTransformMath.normalize(change(current.transform))
-            if (nextTransform == current.transform) return
-            previewPlayer.pause()
-            audioPlayback.pause()
-            playbackClipId = null
-            overlayClips = overlayClips.toMutableList().apply { this[index] = current.copy(transform = nextTransform) }
+            val local = visualLocalTimeMs(current)
+            val effective = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+            val changed = VisualTransformMath.normalize(change(if (animateIfKeyframed && !current.keyframes.isEmpty) effective else current.transform))
+            val updated = if (animateIfKeyframed && !current.keyframes.isEmpty) {
+                current.copy(
+                    keyframes = KeyframeEngine.upsertTransform(
+                        current = changed,
+                        keyframes = current.keyframes,
+                        localTimeMs = local,
+                        durationMs = current.durationMs
+                    )
+                )
+            } else {
+                current.copy(transform = changed)
+            }
+            if (updated == current) return
+            pauseForVisualEdit()
+            overlayClips = overlayClips.toMutableList().apply { this[index] = updated }
             history.record(before)
             renderOverlayState()
             updateOverlayUi()
@@ -928,12 +955,24 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (index < 0) return
         val before = snapshot()
         val current = clips[index]
-        val nextTransform = VisualTransformMath.normalize(change(current.transform))
-        if (nextTransform == current.transform) return
-        previewPlayer.pause()
-        audioPlayback.pause()
-        playbackClipId = null
-        clips = clips.toMutableList().apply { this[index] = current.copy(transform = nextTransform) }
+        val local = visualLocalTimeMs(current)
+        val effective = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+        val changed = VisualTransformMath.normalize(change(if (animateIfKeyframed && !current.keyframes.isEmpty) effective else current.transform))
+        val updated = if (animateIfKeyframed && !current.keyframes.isEmpty) {
+            current.copy(
+                keyframes = KeyframeEngine.upsertTransform(
+                    current = changed,
+                    keyframes = current.keyframes,
+                    localTimeMs = local,
+                    durationMs = current.durationMs
+                )
+            )
+        } else {
+            current.copy(transform = changed)
+        }
+        if (updated == current) return
+        pauseForVisualEdit()
+        clips = clips.toMutableList().apply { this[index] = updated }
         refreshTimelineIndex()
         history.record(before)
         val currentLocation = timelineIndex.locate(timelinePositionMs)
@@ -941,13 +980,190 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             setTimelinePosition(timelineIndex.startOf(id))
             seekPreviewToTimeline(timelinePositionMs)
         } else {
-            previewPlayer.setVisualTransform(nextTransform)
-            applyCanvasPreviewLayout(clips[index])
+            previewPlayer.setVisualTransform(effectiveTransformForClip(updated, timelinePositionMs))
+            applyCanvasPreviewLayout(updated)
         }
         updateSelectionUi()
         updateVisualToolbar()
         saveProject()
         updateHistoryUi()
+    }
+
+    private fun toggleVisualKeyframe() {
+        val before = snapshot()
+        val overlayId = selectedOverlayClipId
+        if (overlayId != null) {
+            val index = overlayClips.indexOfFirst { it.id == overlayId }
+            if (index < 0) return
+            val current = overlayClips[index]
+            val local = visualLocalTimeMs(current)
+            val next = if (KeyframeEngine.hasAt(current.keyframes, local)) {
+                current.copy(keyframes = KeyframeEngine.removeAt(current.keyframes, local, current.durationMs))
+            } else {
+                val effective = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+                current.copy(
+                    keyframes = KeyframeEngine.upsertTransform(
+                        effective,
+                        current.keyframes,
+                        local,
+                        current.durationMs
+                    )
+                )
+            }
+            if (next == current) return
+            pauseForVisualEdit()
+            overlayClips = overlayClips.toMutableList().apply { this[index] = next }
+        } else {
+            val id = selectedClipId ?: return
+            val index = clips.indexOfFirst { it.id == id }
+            if (index < 0) return
+            val current = clips[index]
+            val local = visualLocalTimeMs(current)
+            val next = if (KeyframeEngine.hasAt(current.keyframes, local)) {
+                current.copy(keyframes = KeyframeEngine.removeAt(current.keyframes, local, current.durationMs))
+            } else {
+                val effective = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+                current.copy(
+                    keyframes = KeyframeEngine.upsertTransform(
+                        effective,
+                        current.keyframes,
+                        local,
+                        current.durationMs
+                    )
+                )
+            }
+            if (next == current) return
+            pauseForVisualEdit()
+            clips = clips.toMutableList().apply { this[index] = next }
+            refreshTimelineIndex()
+        }
+        history.record(before)
+        renderVisualKeyframeState()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun cycleVisualKeyframeEasing() {
+        val before = snapshot()
+        val easings = KeyframeEasing.values()
+        val overlayId = selectedOverlayClipId
+        if (overlayId != null) {
+            val index = overlayClips.indexOfFirst { it.id == overlayId }
+            if (index < 0) return
+            val current = overlayClips[index]
+            val local = visualLocalTimeMs(current)
+            val currentEasing = KeyframeEngine.easingAt(current.keyframes, local) ?: return
+            val nextEasing = easings[(easings.indexOf(currentEasing) + 1) % easings.size]
+            val nextKeyframes = KeyframeEngine.setEasingAt(current.keyframes, local, nextEasing, current.durationMs)
+            if (nextKeyframes == current.keyframes) return
+            pauseForVisualEdit()
+            overlayClips = overlayClips.toMutableList().apply { this[index] = current.copy(keyframes = nextKeyframes) }
+        } else {
+            val id = selectedClipId ?: return
+            val index = clips.indexOfFirst { it.id == id }
+            if (index < 0) return
+            val current = clips[index]
+            val local = visualLocalTimeMs(current)
+            val currentEasing = KeyframeEngine.easingAt(current.keyframes, local) ?: return
+            val nextEasing = easings[(easings.indexOf(currentEasing) + 1) % easings.size]
+            val nextKeyframes = KeyframeEngine.setEasingAt(current.keyframes, local, nextEasing, current.durationMs)
+            if (nextKeyframes == current.keyframes) return
+            pauseForVisualEdit()
+            clips = clips.toMutableList().apply { this[index] = current.copy(keyframes = nextKeyframes) }
+            refreshTimelineIndex()
+        }
+        history.record(before)
+        renderVisualKeyframeState()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun clearVisualKeyframes() {
+        val before = snapshot()
+        val overlayId = selectedOverlayClipId
+        if (overlayId != null) {
+            val index = overlayClips.indexOfFirst { it.id == overlayId }
+            if (index < 0) return
+            val current = overlayClips[index]
+            if (current.keyframes.isEmpty) return
+            val local = visualLocalTimeMs(current)
+            val baked = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+            pauseForVisualEdit()
+            overlayClips = overlayClips.toMutableList().apply {
+                this[index] = current.copy(transform = baked, keyframes = TransformKeyframeSet())
+            }
+        } else {
+            val id = selectedClipId ?: return
+            val index = clips.indexOfFirst { it.id == id }
+            if (index < 0) return
+            val current = clips[index]
+            if (current.keyframes.isEmpty) return
+            val local = visualLocalTimeMs(current)
+            val baked = KeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+            pauseForVisualEdit()
+            clips = clips.toMutableList().apply {
+                this[index] = current.copy(transform = baked, keyframes = TransformKeyframeSet())
+            }
+            refreshTimelineIndex()
+        }
+        history.record(before)
+        renderVisualKeyframeState()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun jumpVisualKeyframe(previous: Boolean) {
+        val overlay = selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id } }
+        if (overlay != null) {
+            val local = visualLocalTimeMs(overlay)
+            val target = if (previous) {
+                KeyframeEngine.previousPosition(overlay.keyframes, local)
+            } else {
+                KeyframeEngine.nextPosition(overlay.keyframes, local)
+            } ?: return
+            setTimelinePosition((overlay.timelineStartMs + target).coerceIn(0, timelineIndex.totalDurationMs))
+            seekPreviewToTimeline(timelinePositionMs)
+            updateVisualToolbar()
+            return
+        }
+
+        val clip = selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } ?: return
+        val local = visualLocalTimeMs(clip)
+        val target = if (previous) {
+            KeyframeEngine.previousPosition(clip.keyframes, local)
+        } else {
+            KeyframeEngine.nextPosition(clip.keyframes, local)
+        } ?: return
+        setTimelinePosition((timelineIndex.startOf(clip.id) + target).coerceIn(0, timelineIndex.totalDurationMs))
+        seekPreviewToTimeline(timelinePositionMs)
+        updateVisualToolbar()
+    }
+
+    private fun pauseForVisualEdit() {
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+    }
+
+    private fun renderVisualKeyframeState() {
+        renderOverlayState()
+        updateOverlayUi()
+        updateSelectionUi()
+        updateVisualToolbar()
+        val active = timelineIndex.locate(timelinePositionMs)?.clip
+        if (active != null) previewPlayer.setVisualTransform(effectiveTransformForClip(active, timelinePositionMs))
+        applyCanvasPreviewLayout(active)
+    }
+
+    private fun visualLocalTimeMs(clip: Clip): Int =
+        (timelinePositionMs - timelineIndex.startOf(clip.id)).coerceIn(0, clip.durationMs)
+
+    private fun visualLocalTimeMs(clip: OverlayClip): Int =
+        (timelinePositionMs - clip.timelineStartMs).coerceIn(0, clip.durationMs)
+
+    private fun effectiveTransformForClip(clip: Clip, timelineMs: Int): ClipTransform {
+        val local = (timelineMs - timelineIndex.startOf(clip.id)).coerceIn(0, clip.durationMs)
+        return KeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs)
     }
 
     private fun mutateCanvasSettings(change: (CanvasSettings) -> CanvasSettings) {
@@ -967,11 +1183,35 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun updateVisualToolbar() {
-        val transform = if (selectedTextClipId != null) null else {
-            selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id }?.transform }
-                ?: clips.firstOrNull { it.id == selectedClipId }?.transform
+        if (selectedTextClipId != null) {
+            binding.visualToolbar.setState(null, canvasSettings)
+            return
         }
-        binding.visualToolbar.setState(transform, canvasSettings)
+
+        val overlay = selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id } }
+        if (overlay != null) {
+            val local = visualLocalTimeMs(overlay)
+            binding.visualToolbar.setState(
+                transform = KeyframeEngine.evaluate(overlay.transform, overlay.keyframes, local, overlay.durationMs),
+                canvas = canvasSettings,
+                keyframes = overlay.keyframes,
+                localTimeMs = local
+            )
+            return
+        }
+
+        val clip = selectedClipId?.let { id -> clips.firstOrNull { it.id == id } }
+        if (clip != null) {
+            val local = visualLocalTimeMs(clip)
+            binding.visualToolbar.setState(
+                transform = KeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs),
+                canvas = canvasSettings,
+                keyframes = clip.keyframes,
+                localTimeMs = local
+            )
+        } else {
+            binding.visualToolbar.setState(null, canvasSettings)
+        }
     }
 
     private fun updateTimingToolbar() {
@@ -1011,7 +1251,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         binding.canvasSurface.setBackgroundColor(canvasSettings.background.argb)
         if (::previewPlayer.isInitialized && activeClip != null) {
-            previewPlayer.setVisualTransform(activeClip.transform)
+            previewPlayer.setVisualTransform(effectiveTransformForClip(activeClip, timelinePositionMs))
         }
     }
 
@@ -1394,6 +1634,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
         if (::captionPreview.isInitialized) captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
+        val activeClip = timelineIndex.locate(timelinePositionMs)?.clip
+        if (activeClip != null && ::previewPlayer.isInitialized) {
+            previewPlayer.setVisualTransform(effectiveTransformForClip(activeClip, timelinePositionMs))
+        }
+        if (::previewPlayer.isInitialized && !previewPlayer.isPlaying()) updateVisualToolbar()
     }
 
     private fun updateTimecodeUi() {

@@ -4,12 +4,12 @@ Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.14.0 / schema v14**.
+- Current patch: **0.15.0 / schema v15**.
 - Do not copy Cutrim source; it was only a standalone-APK reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs must contain repo-root paths and **must not contain `.yml/.yaml`**.
 - New patch requires owner confirmation unless owner already said to start.
 
-Patch 14 adds a dedicated timed effect track, lightweight real preview effects (Warm/Cool/Vignette/Dream/Grain), effect intensity, clip-boundary Fade-Black/Flash/Wipe transitions, renderer-independent `EffectComposition`, persistence and undo/redo. True dual-source cross-dissolve and shader-grade color tools remain future work.
+Patch 15 adds renderer-independent transform keyframes for main clips and overlays, deterministic interpolation/easing, real preview evaluation, keyframe navigation/edit controls, timeline-safe split/trim/speed behavior, persistence and undo/redo. The production export compositor must consume the same keyframe model/evaluator rather than reimplementing animation math.
 
-Next planned milestone: **Patch 15 — Keyframe Engine Foundation**. Keep keyframe interpolation renderer-independent so preview and future export consume the same state.
+Next planned milestone: **Patch 16 — Masks / Chroma Foundation**. Keep mask/chroma state renderer-independent and structured for the later GPU/export compositor.
