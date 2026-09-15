@@ -30,7 +30,7 @@ Status: **Core complete; optimization continues.**
 - Stress target: 50+ clips without state corruption.
 
 ### Stage 2 — Core visual editing
-Status: **Pending.**
+Status: **In progress — Patch 08 visual transform foundation implemented.**
 - Crop/rotate/flip.
 - Scale/position/opacity.
 - Canvas/aspect ratio/background.
@@ -140,16 +140,17 @@ Onboarding, project management polish, account/subscription if required, analyti
 ## Execution roadmap from current state
 
 ### Patch 07 — Audio Editing Pro Foundation
-Current patch.
-Acceptance: waveform → move/snap → trim → split → fades → extract audio → undo/redo → save/reopen.
+Locked after device/CI verification.
 
 ### Patch 08 — Core Visual Transform Engine
-Next planned patch after Patch 07 device verification.
+Current patch.
 - Per-clip transform model.
 - Crop/rotate/flip.
 - Scale/position/opacity.
+- Fit/fill.
 - Canvas/aspect ratio/background.
-- Preview transform pipeline designed to be reusable by exporter.
+- Preview pipeline backed by renderer-independent transform state for later export reuse.
+- Schema v8 migration and undo/redo integration.
 
 ### Patch 09 — Speed / Freeze / Reverse Foundation
 - Speed model and duration mapping.

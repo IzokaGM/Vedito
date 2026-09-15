@@ -2,12 +2,13 @@ package com.vedito.app.core.timeline
 
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
+import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
 import java.util.ArrayDeque
 
 /**
- * Small bounded history designed for destructive timeline edits.
+ * Small bounded history designed for destructive timeline and visual edits.
  * Runtime-only by design: projects persist their latest committed state,
  * while undo/redo starts fresh after reopening a project.
  */
@@ -17,6 +18,7 @@ class EditorHistory(private val capacity: Int = 40) {
         val clips: List<Clip>,
         val audioAssets: List<AudioAsset>,
         val audioClips: List<AudioClip>,
+        val canvasSettings: CanvasSettings,
         val selectedClipId: String?,
         val selectedAudioClipId: String?,
         val playheadMs: Int

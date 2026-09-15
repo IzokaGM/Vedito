@@ -3,9 +3,15 @@ package com.vedito.app.core.projects
 import android.content.Context
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
+import com.vedito.app.core.model.CanvasAspect
+import com.vedito.app.core.model.CanvasBackground
+import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipFitMode
+import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
+import com.vedito.app.core.visual.VisualTransformMath
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -55,6 +61,7 @@ class ProjectRepository(context: Context) {
             clips = clips,
             audioAssets = audioAssets,
             audioClips = audioClips,
+            canvasSettings = parseCanvasSettings(item),
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
             selectedAudioClipId = item.optString("selectedAudioClipId").takeIf { it.isNotBlank() },
@@ -81,7 +88,9 @@ class ProjectRepository(context: Context) {
                             frameRate = asset.optDouble("frameRate", MediaAsset.DEFAULT_FRAME_RATE.toDouble())
                                 .toFloat()
                                 .takeIf { it.isFinite() && it in 1f..240f }
-                                ?: MediaAsset.DEFAULT_FRAME_RATE
+                                ?: MediaAsset.DEFAULT_FRAME_RATE,
+                            width = asset.optInt("width", 0).coerceAtLeast(0),
+                            height = asset.optInt("height", 0).coerceAtLeast(0)
                         )
                     )
                 }
@@ -114,11 +123,41 @@ class ProjectRepository(context: Context) {
                         id = clipId,
                         assetId = clip.optString("assetId").ifBlank { fallbackAssetId },
                         sourceStartMs = clip.optInt("sourceStartMs", 0),
-                        sourceEndMs = clip.optInt("sourceEndMs", 0)
+                        sourceEndMs = clip.optInt("sourceEndMs", 0),
+                        transform = parseClipTransform(clip.optJSONObject("transform"))
                     )
                 )
             }
         }
+    }
+
+    private fun parseClipTransform(json: JSONObject?): ClipTransform {
+        if (json == null) return ClipTransform()
+        val fitMode = enumValueOrDefault(json.optString("fitMode"), ClipFitMode.FIT)
+        return VisualTransformMath.normalize(
+            ClipTransform(
+                scale = json.optDouble("scale", 1.0).toFloat(),
+                positionX = json.optDouble("positionX", 0.0).toFloat(),
+                positionY = json.optDouble("positionY", 0.0).toFloat(),
+                rotationDegrees = json.optDouble("rotationDegrees", 0.0).toFloat(),
+                flipHorizontal = json.optBoolean("flipHorizontal", false),
+                flipVertical = json.optBoolean("flipVertical", false),
+                opacity = json.optDouble("opacity", 1.0).toFloat(),
+                cropLeft = json.optDouble("cropLeft", 0.0).toFloat(),
+                cropTop = json.optDouble("cropTop", 0.0).toFloat(),
+                cropRight = json.optDouble("cropRight", 0.0).toFloat(),
+                cropBottom = json.optDouble("cropBottom", 0.0).toFloat(),
+                fitMode = fitMode
+            )
+        )
+    }
+
+    private fun parseCanvasSettings(item: JSONObject): CanvasSettings {
+        val json = item.optJSONObject("canvas") ?: return CanvasSettings()
+        return CanvasSettings(
+            aspect = enumValueOrDefault(json.optString("aspect"), CanvasAspect.SOURCE),
+            background = enumValueOrDefault(json.optString("background"), CanvasBackground.BLACK)
+        )
     }
 
     private fun parseAudioAssets(item: JSONObject): List<AudioAsset> {
@@ -180,6 +219,8 @@ class ProjectRepository(context: Context) {
                     .put("displayName", asset.displayName)
                     .put("durationMs", asset.durationMs)
                     .put("frameRate", asset.frameRate.toDouble())
+                    .put("width", asset.width)
+                    .put("height", asset.height)
             )
         }
 
@@ -191,6 +232,7 @@ class ProjectRepository(context: Context) {
                     .put("assetId", clip.assetId)
                     .put("sourceStartMs", clip.sourceStartMs)
                     .put("sourceEndMs", clip.sourceEndMs)
+                    .put("transform", transformToJson(clip.transform))
             )
         }
 
@@ -230,6 +272,12 @@ class ProjectRepository(context: Context) {
             .put("clips", clipArray)
             .put("audioAssets", audioAssetArray)
             .put("audioClips", audioClipArray)
+            .put(
+                "canvas",
+                JSONObject()
+                    .put("aspect", project.canvasSettings.aspect.name)
+                    .put("background", project.canvasSettings.background.name)
+            )
             .put("playheadMs", project.playheadMs)
             .put("selectedClipId", project.selectedClipId ?: "")
             .put("selectedAudioClipId", project.selectedAudioClipId ?: "")
@@ -237,10 +285,32 @@ class ProjectRepository(context: Context) {
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
 
+    private fun transformToJson(transform: ClipTransform): JSONObject {
+        val safe = VisualTransformMath.normalize(transform)
+        return JSONObject()
+            .put("scale", safe.scale.toDouble())
+            .put("positionX", safe.positionX.toDouble())
+            .put("positionY", safe.positionY.toDouble())
+            .put("rotationDegrees", safe.rotationDegrees.toDouble())
+            .put("flipHorizontal", safe.flipHorizontal)
+            .put("flipVertical", safe.flipVertical)
+            .put("opacity", safe.opacity.toDouble())
+            .put("cropLeft", safe.cropLeft.toDouble())
+            .put("cropTop", safe.cropTop.toDouble())
+            .put("cropRight", safe.cropRight.toDouble())
+            .put("cropBottom", safe.cropBottom.toDouble())
+            .put("fitMode", safe.fitMode.name)
+    }
+
+    private inline fun <reified T : Enum<T>> enumValueOrDefault(raw: String, fallback: T): T {
+        if (raw.isBlank()) return fallback
+        return enumValues<T>().firstOrNull { it.name == raw } ?: fallback
+    }
+
     companion object {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 7
+        private const val SCHEMA_VERSION = 8
     }
 }

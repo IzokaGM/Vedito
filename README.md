@@ -1,28 +1,41 @@
-# Vedito 0.7.0 — Patch 07: Audio Editing Pro Foundation
+# Vedito Patch 08 — Core Visual Transform Engine
 
-Native Android/Kotlin patch. Extract this ZIP at repository root.
+Version: **0.8.0 / versionCode 8**  
+Package: **`com.vedito.app`**
 
-## Patch 07
-- Cached real PCM waveform extraction for audio/video sources with audio tracks.
-- Waveforms rendered inside audio clips.
-- Drag audio clips horizontally with snapping.
-- Trim audio from left/right edges.
-- Split selected audio clip at playhead.
-- Fade-in / fade-out model, persistence and preview gain.
-- Extract audio track from the selected video clip into an editable audio clip.
-- Audio edits participate in undo/redo and autosave.
-- Project schema upgraded to v7 with backward-compatible defaults.
-- Project context/workplan updated for AI handoff.
+## What this patch adds
+- Per-clip visual transform model with deterministic persistence.
+- Scale and X/Y position.
+- 90° rotation, horizontal flip and vertical flip.
+- Opacity.
+- Edge crop state and real preview cropping.
+- Fit / Fill behavior.
+- Project canvas ratios: Source, 9:16, 16:9, 1:1 and 4:5.
+- Canvas backgrounds: Black, Charcoal, White and Violet.
+- Source width/height metadata probing.
+- Real-time `TextureView` transform preview.
+- Undo/redo for clip transforms and canvas changes.
+- Save/reopen migration through project schema **v8**.
+- Compact horizontally-scrollable visual toolbar to avoid making the editor vertically heavy.
+- Renderer-independent `VisualTransformMath` so the future export compositor consumes the same transform state.
 
-## Device acceptance test
-1. Open a multi-video project.
-2. Add audio and wait for waveform to appear.
-3. Drag audio; verify it snaps to playhead/video cut boundaries.
-4. Drag left/right audio edges; verify trim is preserved after reopen.
-5. Put playhead inside selected audio and tap **Audio split**.
-6. Cycle **Fade in** / **Fade out** and play through the fades.
-7. Select a video clip and tap **Extract**; its audio should appear at that clip's timeline position.
-8. Undo/redo each edit, leave editor, reopen project, and verify state.
+## Visual toolbar behavior
+Select a video clip, then use the horizontal toolbar above the video timeline. Crop edge buttons advance that edge in 5% steps and wrap after 40%; `Crop reset` clears all crop edges. Opacity cycles 100% → 75% → 50% → 25% → 100%. Canvas and BG buttons cycle through their available project-wide settings.
 
-## Delivery rule
-This patch intentionally contains no `.yml` or `.yaml` workflow files.
+## Acceptance test
+1. Open a project and select a video clip.
+2. Change scale, position, rotation, flip, opacity, fit/fill and crop; preview must update immediately.
+3. Change canvas ratio and background.
+4. Split or duplicate the transformed clip; inherited visual state must remain consistent.
+5. Undo/redo visual and canvas edits.
+6. Close and reopen the project; visual state and canvas settings must persist.
+7. Play across multiple clips with different transforms; each clip must switch to its own transform.
+8. Open an older Patch 07 project; it must load with default visual transform values.
+
+## Validation performed before packaging
+- Pure Kotlin visual/timeline core compile: passed.
+- Visual transform normalization + split inheritance smoke test: passed.
+- XML well-formedness/static path checks: passed.
+- Full Android Gradle build cannot run in the packaging environment because external Gradle distribution download is blocked; GitHub Actions remains the APK compile gate.
+
+No `.yml` or `.yaml` files belong inside this patch ZIP.

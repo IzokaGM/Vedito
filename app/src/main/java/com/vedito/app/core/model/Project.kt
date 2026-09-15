@@ -1,11 +1,59 @@
 package com.vedito.app.core.model
 
+enum class ClipFitMode {
+    FIT,
+    FILL
+}
+
+data class ClipTransform(
+    val scale: Float = 1f,
+    val positionX: Float = 0f,
+    val positionY: Float = 0f,
+    val rotationDegrees: Float = 0f,
+    val flipHorizontal: Boolean = false,
+    val flipVertical: Boolean = false,
+    val opacity: Float = 1f,
+    val cropLeft: Float = 0f,
+    val cropTop: Float = 0f,
+    val cropRight: Float = 0f,
+    val cropBottom: Float = 0f,
+    val fitMode: ClipFitMode = ClipFitMode.FIT
+)
+
+enum class CanvasAspect(val label: String, val widthUnits: Int, val heightUnits: Int) {
+    SOURCE("Source", 0, 0),
+    VERTICAL_9_16("9:16", 9, 16),
+    LANDSCAPE_16_9("16:9", 16, 9),
+    SQUARE_1_1("1:1", 1, 1),
+    PORTRAIT_4_5("4:5", 4, 5);
+
+    fun fixedRatioOrNull(): Float? = if (widthUnits > 0 && heightUnits > 0) {
+        widthUnits.toFloat() / heightUnits.toFloat()
+    } else {
+        null
+    }
+}
+
+enum class CanvasBackground(val label: String, val argb: Int) {
+    BLACK("Black", 0xFF000000.toInt()),
+    CHARCOAL("Charcoal", 0xFF171A23.toInt()),
+    WHITE("White", 0xFFFFFFFF.toInt()),
+    VIOLET("Violet", 0xFF241E45.toInt())
+}
+
+data class CanvasSettings(
+    val aspect: CanvasAspect = CanvasAspect.SOURCE,
+    val background: CanvasBackground = CanvasBackground.BLACK
+)
+
 data class MediaAsset(
     val id: String,
     val uri: String,
     val displayName: String,
     val durationMs: Int = 0,
-    val frameRate: Float = DEFAULT_FRAME_RATE
+    val frameRate: Float = DEFAULT_FRAME_RATE,
+    val width: Int = 0,
+    val height: Int = 0
 ) {
     companion object {
         const val DEFAULT_FRAME_RATE = 30f
@@ -16,7 +64,8 @@ data class Clip(
     val id: String,
     val assetId: String,
     val sourceStartMs: Int,
-    val sourceEndMs: Int
+    val sourceEndMs: Int,
+    val transform: ClipTransform = ClipTransform()
 ) {
     val durationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)
@@ -55,6 +104,7 @@ data class Project(
     val clips: List<Clip> = emptyList(),
     val audioAssets: List<AudioAsset> = emptyList(),
     val audioClips: List<AudioClip> = emptyList(),
+    val canvasSettings: CanvasSettings = CanvasSettings(),
     val playheadMs: Int = 0,
     val selectedClipId: String? = null,
     val selectedAudioClipId: String? = null,

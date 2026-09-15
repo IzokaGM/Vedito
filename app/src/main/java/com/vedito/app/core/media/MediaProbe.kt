@@ -12,7 +12,9 @@ class MediaProbe(context: Context) {
     data class Result(
         val uri: Uri,
         val durationMs: Int,
-        val frameRate: Float
+        val frameRate: Float,
+        val width: Int,
+        val height: Int
     )
 
     private val appContext = context.applicationContext
@@ -38,7 +40,21 @@ class MediaProbe(context: Context) {
                         ?.toFloatOrNull()
                         ?.takeIf { it.isFinite() && it >= 1f && it <= 240f }
                         ?: MediaAsset.DEFAULT_FRAME_RATE
-                    Result(uri, duration, fps).takeIf { it.durationMs > 0 }
+                    val encodedWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                        ?.toIntOrNull()
+                        ?.coerceAtLeast(0)
+                        ?: 0
+                    val encodedHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                        ?.toIntOrNull()
+                        ?.coerceAtLeast(0)
+                        ?: 0
+                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        ?.toIntOrNull()
+                        ?: 0
+                    val swap = rotation % 180 != 0
+                    val displayWidth = if (swap) encodedHeight else encodedWidth
+                    val displayHeight = if (swap) encodedWidth else encodedHeight
+                    Result(uri, duration, fps, displayWidth, displayHeight).takeIf { it.durationMs > 0 }
                 } catch (_: Exception) {
                     null
                 } finally {

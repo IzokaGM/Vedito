@@ -8,6 +8,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Surface
 import android.view.TextureView
+import com.vedito.app.core.model.ClipFitMode
+import com.vedito.app.core.model.ClipTransform
+import com.vedito.app.core.visual.VisualTransformMath
 import kotlin.math.max
 
 class PreviewPlayer(
@@ -34,6 +37,7 @@ class PreviewPlayer(
     private var pendingStartPositionMs = 0
     private var pendingAutoPlay = false
     private var loadGeneration = 0
+    private var visualTransform = ClipTransform()
 
     val currentUri: Uri?
         get() = mediaUri
@@ -52,8 +56,15 @@ class PreviewPlayer(
     }
 
     init {
+        textureView.isOpaque = false
         textureView.surfaceTextureListener = this
         mainHandler.post(ticker)
+    }
+
+    fun setVisualTransform(transform: ClipTransform) {
+        visualTransform = VisualTransformMath.normalize(transform)
+        textureView.alpha = visualTransform.opacity
+        applyVideoTransform(textureView.width, textureView.height)
     }
 
     fun load(uri: Uri, startPositionMs: Int = 0, playWhenReady: Boolean = false) {
@@ -105,6 +116,8 @@ class PreviewPlayer(
     }
 
     override fun onSurfaceTextureAvailable(surfaceTexture: android.graphics.SurfaceTexture, width: Int, height: Int) {
+        textureView.alpha = visualTransform.opacity
+        applyVideoTransform(width, height)
         mediaUri?.let(::prepare)
     }
 
@@ -138,6 +151,7 @@ class PreviewPlayer(
                     durationMs = max(0, ready.duration)
                     this@PreviewPlayer.videoWidth = ready.videoWidth
                     this@PreviewPlayer.videoHeight = ready.videoHeight
+                    textureView.alpha = visualTransform.opacity
                     applyVideoTransform(textureView.width, textureView.height)
                     listener.onReady(uri, durationMs)
                     listener.onPlaybackStateChanged(false)
@@ -187,15 +201,49 @@ class PreviewPlayer(
         }
     }
 
+    /**
+     * Applies Vedito's renderer-independent ClipTransform to the TextureView preview.
+     * The export compositor must consume the same normalized transform values later.
+     */
     private fun applyVideoTransform(viewWidth: Int, viewHeight: Int) {
         if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) return
 
-        val scale = minOf(viewWidth.toFloat() / videoWidth, viewHeight.toFloat() / videoHeight)
-        val scaledWidth = videoWidth * scale
-        val scaledHeight = videoHeight * scale
+        val transform = VisualTransformMath.normalize(visualTransform)
+        val crop = VisualTransformMath.cropWindow(transform)
+        val croppedWidth = (videoWidth * crop.widthFraction).coerceAtLeast(1f)
+        val croppedHeight = (videoHeight * crop.heightFraction).coerceAtLeast(1f)
+        val swapsAxes = transform.rotationDegrees.toInt() % 180 != 0
+        val fittedWidth = if (swapsAxes) croppedHeight else croppedWidth
+        val fittedHeight = if (swapsAxes) croppedWidth else croppedHeight
+        val fitScale = when (transform.fitMode) {
+            ClipFitMode.FIT -> minOf(viewWidth.toFloat() / fittedWidth, viewHeight.toFloat() / fittedHeight)
+            ClipFitMode.FILL -> maxOf(viewWidth.toFloat() / fittedWidth, viewHeight.toFloat() / fittedHeight)
+        }
+
+        val userScale = transform.scale
+        val renderedWidth = videoWidth * fitScale * userScale
+        val renderedHeight = videoHeight * fitScale * userScale
+        val centerX = viewWidth / 2f
+        val centerY = viewHeight / 2f
+        val signX = if (transform.flipHorizontal) -1f else 1f
+        val signY = if (transform.flipVertical) -1f else 1f
+
+        val cropOffsetX = crop.centerOffsetX * videoWidth * fitScale * userScale
+        val cropOffsetY = crop.centerOffsetY * videoHeight * fitScale * userScale
+        val userOffsetX = transform.positionX * viewWidth * 0.42f
+        val userOffsetY = transform.positionY * viewHeight * 0.42f
+
         val matrix = Matrix().apply {
-            setScale(scaledWidth / viewWidth, scaledHeight / viewHeight, viewWidth / 2f, viewHeight / 2f)
+            setScale(
+                signX * renderedWidth / viewWidth,
+                signY * renderedHeight / viewHeight,
+                centerX,
+                centerY
+            )
+            postTranslate(-cropOffsetX + userOffsetX, -cropOffsetY + userOffsetY)
+            postRotate(transform.rotationDegrees, centerX, centerY)
         }
         textureView.setTransform(matrix)
+        textureView.alpha = transform.opacity
     }
 }

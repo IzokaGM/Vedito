@@ -5,7 +5,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,7 +19,12 @@ import com.vedito.app.core.audio.AudioWaveformCache
 import com.vedito.app.core.media.MediaProbe
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
+import com.vedito.app.core.model.CanvasAspect
+import com.vedito.app.core.model.CanvasBackground
+import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipFitMode
+import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
@@ -26,9 +33,11 @@ import com.vedito.app.core.timeline.FrameTimecode
 import com.vedito.app.core.timeline.TimelineEditor
 import com.vedito.app.core.timeline.TimelineIndex
 import com.vedito.app.core.timeline.TimelineMath
+import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
+import com.vedito.app.feature.editor.visual.TransformToolbarView
 import com.vedito.app.ui.applySystemBarInsets
 import com.vedito.app.ui.configureVeditoSystemBars
 import java.util.UUID
@@ -51,6 +60,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var clips: List<Clip> = emptyList()
     private var audioAssets: List<AudioAsset> = emptyList()
     private var audioClips: List<AudioClip> = emptyList()
+    private var canvasSettings = CanvasSettings()
     private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
     private var selectedAudioClipId: String? = null
@@ -112,6 +122,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = TimelineMath.sanitized(project.clips, assets)
         audioAssets = project.audioAssets
         audioClips = sanitizeAudioClips(project.audioClips)
+        canvasSettings = project.canvasSettings
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = project.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
@@ -145,6 +156,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioFadeInButton.setOnClickListener { cycleSelectedAudioFade(inward = true) }
         binding.audioFadeOutButton.setOnClickListener { cycleSelectedAudioFade(inward = false) }
         binding.extractAudioButton.setOnClickListener { extractAudioFromSelectedVideo() }
+        binding.visualToolbar.onAction = ::handleVisualAction
+        binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
         binding.audioTimeline.onAudioClipSelected = { id ->
             selectedAudioClipId = id
             updateAudioUi()
@@ -167,6 +180,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.timeline.onClipSelected = { id ->
             selectedClipId = id
             updateSelectionUi()
+            updateVisualToolbar()
+            saveProject()
         }
         binding.timeline.onScrubbed = { position ->
             userScrubbing = true
@@ -205,6 +220,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         previewPlayer = PreviewPlayer(this, binding.previewTexture, this)
+        applyCanvasPreviewLayout()
         audioPlayback.setTimeline(audioAssets, audioClips)
         renderTimelineState(restoreViewport = true)
         openInitialPreview()
@@ -308,6 +324,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         assets.firstOrNull()?.let { asset ->
             binding.playerError.visibility = View.GONE
+            previewPlayer.setVisualTransform(ClipTransform())
+            applyCanvasPreviewLayout()
             previewPlayer.load(Uri.parse(asset.uri), 0, false)
         }
     }
@@ -349,7 +367,141 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val asset = assetFor(clip) ?: return
         binding.playerError.visibility = View.GONE
         binding.playPauseButton.isEnabled = true
+        previewPlayer.setVisualTransform(clip.transform)
+        applyCanvasPreviewLayout(clip)
         previewPlayer.load(Uri.parse(asset.uri), sourcePositionMs, play)
+    }
+
+    private fun handleVisualAction(action: TransformToolbarView.Action) {
+        when (action) {
+            TransformToolbarView.Action.SCALE_DOWN -> mutateSelectedTransform { it.copy(scale = it.scale - 0.1f) }
+            TransformToolbarView.Action.SCALE_UP -> mutateSelectedTransform { it.copy(scale = it.scale + 0.1f) }
+            TransformToolbarView.Action.MOVE_LEFT -> mutateSelectedTransform { it.copy(positionX = it.positionX - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_RIGHT -> mutateSelectedTransform { it.copy(positionX = it.positionX + POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_UP -> mutateSelectedTransform { it.copy(positionY = it.positionY - POSITION_STEP) }
+            TransformToolbarView.Action.MOVE_DOWN -> mutateSelectedTransform { it.copy(positionY = it.positionY + POSITION_STEP) }
+            TransformToolbarView.Action.ROTATE_90 -> mutateSelectedTransform { it.copy(rotationDegrees = it.rotationDegrees + 90f) }
+            TransformToolbarView.Action.FLIP_HORIZONTAL -> mutateSelectedTransform { it.copy(flipHorizontal = !it.flipHorizontal) }
+            TransformToolbarView.Action.FLIP_VERTICAL -> mutateSelectedTransform { it.copy(flipVertical = !it.flipVertical) }
+            TransformToolbarView.Action.OPACITY_CYCLE -> mutateSelectedTransform {
+                val next = when {
+                    it.opacity > 0.76f -> 0.75f
+                    it.opacity > 0.51f -> 0.50f
+                    it.opacity > 0.26f -> 0.25f
+                    else -> 1f
+                }
+                it.copy(opacity = next)
+            }
+            TransformToolbarView.Action.FIT_TOGGLE -> mutateSelectedTransform {
+                it.copy(fitMode = if (it.fitMode == ClipFitMode.FIT) ClipFitMode.FILL else ClipFitMode.FIT)
+            }
+            TransformToolbarView.Action.CROP_LEFT -> mutateSelectedTransform { it.copy(cropLeft = nextCropEdge(it.cropLeft)) }
+            TransformToolbarView.Action.CROP_RIGHT -> mutateSelectedTransform { it.copy(cropRight = nextCropEdge(it.cropRight)) }
+            TransformToolbarView.Action.CROP_TOP -> mutateSelectedTransform { it.copy(cropTop = nextCropEdge(it.cropTop)) }
+            TransformToolbarView.Action.CROP_BOTTOM -> mutateSelectedTransform { it.copy(cropBottom = nextCropEdge(it.cropBottom)) }
+            TransformToolbarView.Action.CROP_RESET -> mutateSelectedTransform {
+                it.copy(cropLeft = 0f, cropTop = 0f, cropRight = 0f, cropBottom = 0f)
+            }
+            TransformToolbarView.Action.CANVAS_RATIO -> mutateCanvasSettings {
+                val values = CanvasAspect.values().toList()
+                val next = values[(values.indexOf(it.aspect) + 1) % values.size]
+                it.copy(aspect = next)
+            }
+            TransformToolbarView.Action.CANVAS_BACKGROUND -> mutateCanvasSettings {
+                val values = CanvasBackground.values().toList()
+                val next = values[(values.indexOf(it.background) + 1) % values.size]
+                it.copy(background = next)
+            }
+            TransformToolbarView.Action.RESET_TRANSFORM -> mutateSelectedTransform { ClipTransform() }
+        }
+    }
+
+    private fun mutateSelectedTransform(change: (ClipTransform) -> ClipTransform) {
+        val id = selectedClipId ?: return
+        val index = clips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = clips[index]
+        val nextTransform = VisualTransformMath.normalize(change(current.transform))
+        if (nextTransform == current.transform) return
+
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        clips = clips.toMutableList().apply { this[index] = current.copy(transform = nextTransform) }
+        refreshTimelineIndex()
+        history.record(before)
+
+        val currentLocation = timelineIndex.locate(timelinePositionMs)
+        if (currentLocation?.clip?.id != id) {
+            setTimelinePosition(timelineIndex.startOf(id))
+            seekPreviewToTimeline(timelinePositionMs)
+        } else {
+            previewPlayer.setVisualTransform(nextTransform)
+            applyCanvasPreviewLayout(clips[index])
+        }
+        updateSelectionUi()
+        updateVisualToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun mutateCanvasSettings(change: (CanvasSettings) -> CanvasSettings) {
+        val before = snapshot()
+        val next = change(canvasSettings)
+        if (next == canvasSettings) return
+        canvasSettings = next
+        history.record(before)
+        applyCanvasPreviewLayout()
+        updateVisualToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun nextCropEdge(value: Float): Float {
+        return if (value >= 0.40f) 0f else (value + CROP_STEP).coerceAtMost(0.40f)
+    }
+
+    private fun updateVisualToolbar() {
+        val transform = clips.firstOrNull { it.id == selectedClipId }?.transform
+        binding.visualToolbar.setState(transform, canvasSettings)
+    }
+
+    private fun applyCanvasPreviewLayout(preferredClip: Clip? = null) {
+        val parentWidth = binding.previewContainer.width
+        val parentHeight = binding.previewContainer.height
+        if (parentWidth <= 0 || parentHeight <= 0) return
+
+        val activeClip = preferredClip
+            ?: timelineIndex.locate(timelinePositionMs)?.clip
+            ?: clips.firstOrNull { it.id == selectedClipId }
+            ?: clips.firstOrNull()
+        val asset = activeClip?.let(::assetFor)
+        val ratio = VisualTransformMath.canvasRatio(
+            canvasSettings.aspect,
+            asset?.width ?: 0,
+            asset?.height ?: 0
+        ).coerceIn(0.25f, 4f)
+
+        val parentRatio = parentWidth.toFloat() / parentHeight.toFloat()
+        val canvasWidth: Int
+        val canvasHeight: Int
+        if (parentRatio > ratio) {
+            canvasHeight = parentHeight
+            canvasWidth = (canvasHeight * ratio).roundToInt().coerceAtLeast(1)
+        } else {
+            canvasWidth = parentWidth
+            canvasHeight = (canvasWidth / ratio).roundToInt().coerceAtLeast(1)
+        }
+
+        val current = binding.canvasSurface.layoutParams as? FrameLayout.LayoutParams
+        if (current == null || current.width != canvasWidth || current.height != canvasHeight || current.gravity != Gravity.CENTER) {
+            binding.canvasSurface.layoutParams = FrameLayout.LayoutParams(canvasWidth, canvasHeight, Gravity.CENTER)
+        }
+        binding.canvasSurface.setBackgroundColor(canvasSettings.background.argb)
+        if (::previewPlayer.isInitialized && activeClip != null) {
+            previewPlayer.setVisualTransform(activeClip.transform)
+        }
     }
 
     private fun splitAtPlayhead() {
@@ -456,14 +608,21 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                     uri = key,
                     displayName = names[key] ?: "Video",
                     durationMs = result.durationMs,
-                    frameRate = result.frameRate
+                    frameRate = result.frameRate,
+                    width = result.width,
+                    height = result.height
                 ).also {
                     existingByUri[key] = it
                     updatedAssets += it
                 }
 
-                val normalizedAsset = if (asset.durationMs != result.durationMs || asset.frameRate != result.frameRate) {
-                    asset.copy(durationMs = result.durationMs, frameRate = result.frameRate).also { replacement ->
+                val normalizedAsset = if (asset.durationMs != result.durationMs || asset.frameRate != result.frameRate || asset.width != result.width || asset.height != result.height) {
+                    asset.copy(
+                        durationMs = result.durationMs,
+                        frameRate = result.frameRate,
+                        width = result.width,
+                        height = result.height
+                    ).also { replacement ->
                         val assetIndex = updatedAssets.indexOfFirst { it.id == replacement.id }
                         if (assetIndex >= 0) updatedAssets[assetIndex] = replacement
                         existingByUri[key] = replacement
@@ -522,13 +681,17 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             val existingAsset = assets.firstOrNull { it.uri == uri.toString() }
             val replacementAsset = existingAsset?.copy(
                 durationMs = result.durationMs,
-                frameRate = result.frameRate
+                frameRate = result.frameRate,
+                width = result.width,
+                height = result.height
             ) ?: MediaAsset(
                 id = UUID.randomUUID().toString(),
                 uri = uri.toString(),
                 displayName = name,
                 durationMs = result.durationMs,
-                frameRate = result.frameRate
+                frameRate = result.frameRate,
+                width = result.width,
+                height = result.height
             )
 
             val updatedAssets = assets.toMutableList()
@@ -594,6 +757,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = TimelineMath.sanitized(snapshot.clips, assets)
         audioAssets = snapshot.audioAssets
         audioClips = sanitizeAudioClips(snapshot.audioClips)
+        canvasSettings = snapshot.canvasSettings
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = snapshot.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
@@ -623,6 +787,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         clips = clips.toList(),
         audioAssets = audioAssets.toList(),
         audioClips = audioClips.toList(),
+        canvasSettings = canvasSettings,
         selectedClipId = selectedClipId,
         selectedAudioClipId = selectedAudioClipId,
         playheadMs = timelinePositionMs
@@ -644,6 +809,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateSelectionUi()
         updateHistoryUi()
         updateZoomUi()
+        updateVisualToolbar()
+        applyCanvasPreviewLayout()
         audioClips = sanitizeAudioClips(audioClips)
         if (selectedAudioClipId != null && audioClips.none { it.id == selectedAudioClipId }) selectedAudioClipId = audioClips.firstOrNull()?.id
         pruneUnusedAudioAssets()
@@ -697,11 +864,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             val number = clips.indexOfFirst { it.id == selected.id } + 1
             val asset = assetFor(selected)
             val source = asset?.displayName?.substringBeforeLast('.')?.take(18).orEmpty()
-            val fps = asset?.frameRate ?: MediaAsset.DEFAULT_FRAME_RATE
+            val transform = selected.transform
+            val visual = "${(transform.scale * 100f).roundToInt()}% · ${transform.rotationDegrees.roundToInt()}° · ${(transform.opacity * 100f).roundToInt()}%"
             binding.selectionLabel.text = if (source.isBlank()) {
-                "Clip $number · ${formatDuration(selected.durationMs)} · ${formatFps(fps)} fps"
+                "Clip $number · ${formatDuration(selected.durationMs)} · $visual"
             } else {
-                "Clip $number · $source · ${formatDuration(selected.durationMs)} · ${formatFps(fps)} fps"
+                "Clip $number · $source · $visual"
             }
         }
     }
@@ -743,9 +911,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             var changed = false
             assets = assets.map { asset ->
                 val probe = byUri[asset.uri] ?: return@map asset
-                if (asset.durationMs != probe.durationMs || asset.frameRate != probe.frameRate) {
+                if (asset.durationMs != probe.durationMs || asset.frameRate != probe.frameRate || asset.width != probe.width || asset.height != probe.height) {
                     changed = true
-                    asset.copy(durationMs = probe.durationMs, frameRate = probe.frameRate)
+                    asset.copy(
+                        durationMs = probe.durationMs,
+                        frameRate = probe.frameRate,
+                        width = probe.width,
+                        height = probe.height
+                    )
                 } else asset
             }
 
@@ -1076,6 +1249,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             clips = clips,
             audioAssets = audioAssets,
             audioClips = audioClips,
+            canvasSettings = canvasSettings,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
             selectedAudioClipId = selectedAudioClipId,
@@ -1125,5 +1299,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val END_GUARD_MS = 35
         private const val SEEK_GUARD_MS = 700
         private const val HISTORY_LIMIT = 40
+        private const val POSITION_STEP = 0.08f
+        private const val CROP_STEP = 0.05f
     }
 }
