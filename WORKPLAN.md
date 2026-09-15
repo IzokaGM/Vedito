@@ -1,177 +1,129 @@
 # Vedito — Master Workplan
 
 ## North-star
-Build a stable, premium, native Android editor with CapCut-class breadth over iterative releases. Each milestone follows:
+Build a stable premium native Android editor with CapCut-class capability. Every milestone follows:
 
 **BUILD → FUNCTIONAL TEST → STRESS TEST → FIX → LOCK → NEXT**
 
-A feature is complete only when its behavior, project persistence, preview integration and later export integration are correct.
+A feature is complete only when behavior, persistence, preview integration and eventual export architecture agree.
 
-## Master capability stages
-
-### Stage 0 — Architecture / foundation
-Status: **Foundation locked; evolve without unnecessary rewrites.**
-- Native Android/Kotlin app shell.
-- Design system and system insets.
+## Stage 0 — Architecture / foundation
+**Status: locked foundation; evolve without unnecessary rewrites.**
+- Native Android/Kotlin shell, design system, insets.
 - Modular project/timeline/player structure.
-- Persistent project schema with migrations.
-- CI patch/unzip/build flow.
+- Persistent schema/migrations.
+- ZIP → unzip → APK GitHub Action flow.
 
-### Stage 1 — Editing timeline engine
-Status: **Core complete; optimization continues.**
-- Multi-video timeline.
-- Thumbnail timeline and playhead.
-- Trim/split/delete/duplicate/replace/reorder.
-- Ripple sequence behavior.
-- Frame-aware scrub and snapping.
-- Pinch zoom and viewport.
-- Undo/redo.
-- Autosave/reopen.
-- Stress target: 50+ clips without state corruption.
+## Stage 1 — Editing timeline engine
+**Status: core complete; optimization continuous.**
+- Multi-video timeline, thumbnails/playhead.
+- Trim/split/delete/duplicate/replace/reorder + ripple.
+- Scrub, snapping, zoom/viewport.
+- Undo/redo, autosave/reopen.
+- 50+ clip stress target.
 
-### Stage 2 — Core visual editing
-Status: **In progress — Patch 08 visual transform foundation implemented.**
+## Stage 2 — Core visual editing
+**Status: in progress; Patch 09 completed.**
+Completed:
 - Crop/rotate/flip.
 - Scale/position/opacity.
-- Canvas/aspect ratio/background.
-- Freeze frame/reverse.
-- Normal speed and speed curves.
-- Picture-in-picture / visual overlay tracks.
+- Canvas ratio/background + fit/fill.
+- Uniform speed model + preview/timeline mapping.
+- Freeze-frame clip insertion.
+- Reverse timing semantics + seek-driven preview foundation.
 
-### Stage 3 — Pro visual editing
-Status: **Pending.**
+Next:
+- Visual overlay/PIP tracks.
+- Later speed curves built on `ClipTimeMap`.
+
+## Stage 3 — Pro visual editing
+**Pending.**
 - Keyframes + easing/graphs.
 - Masks + feather.
 - Chroma key.
 - Motion/object tracking.
-- Stabilization.
-- Motion blur.
-- Advanced color: HSL, curves, wheels, LUT.
+- Stabilization, motion blur.
+- HSL/curves/wheels/LUT.
 
-### Stage 4 — Audio
-Status: **Patch 07 pro foundation completed after device verification.**
-Completed through Patch 07:
-- Audio import and audio asset/clip project model.
-- Multiple overlapping audio preview.
-- Audio lane view and cached PCM waveforms.
-- Select, volume, mute, delete.
-- Drag/move with snapping, left/right trim, split.
-- Fade in/out preview + persistence.
-- Extract audio from selected video clip.
-- Save/reopen + undo/redo.
+## Stage 4 — Audio
+**Pro foundation completed through Patch 07; advanced audio pending.**
+Completed:
+- Audio import/assets/clips, overlapping preview.
+- Waveforms, selection, move/snap/trim/split.
+- Volume/mute/delete, fades.
+- Extract audio for normal 1× forward clips.
+- Persistence + undo/redo.
 
-Next audio milestones after visual-core work:
+Pending:
 - Voice-over recording.
-- Audio ducking.
+- Ducking.
 - Noise reduction/voice enhancement.
 - Pitch/voice effects.
 - Beat detection/markers.
+- Retime/reverse audio model for retimed source extraction.
 
-### Stage 5 — Text & captions
-Status: **Pending.**
-- Rich text layers.
-- Font/style/stroke/shadow/background.
-- Text transform/timing.
-- Text animation.
-- Subtitle track.
-- SRT import/export.
-- Auto captions and correction workflow.
-- Karaoke/per-word highlighting.
-- Text-to-speech.
+## Stage 5 — Text & captions
+**Pending.**
+Rich text, timing/transform, animation, subtitle track, SRT import/export, auto captions, correction, karaoke/per-word, TTS.
 
-### Stage 6 — Effects / transitions
-Status: **Pending.**
-- Modular effect system.
-- Filters and adjustments.
-- Transitions.
-- Video/body effects.
-- Stickers/overlay assets.
-- Effect timing and parameters.
+## Stage 6 — Effects / transitions
+**Pending.**
+Modular effect system, filters/adjustments, transitions, effects, stickers/overlay assets, timing/parameters.
 
-### Stage 7 — Production render/export engine
-Status: **Pending — critical milestone.**
+## Stage 7 — Production render/export engine
+**Pending — critical.**
 - Deterministic off-screen compositor.
-- Preview ≈ export behavior.
-- H.264/H.265 + AAC, MP4.
-- 720p/1080p/2K/4K where device supports it.
-- FPS/bitrate/quality controls.
-- Hardware encoding.
-- Background export, progress, cancellation and recovery.
-- Thermal/memory/storage handling.
+- Preview ≈ export.
+- H.264/H.265 + AAC/MP4.
+- 720p/1080p/2K/4K where supported.
+- FPS/bitrate controls, hardware encoding.
+- Progress/cancel/recovery, thermal/memory/storage handling.
+- Production reverse decode/audio and freeze/speed rendering consume the same timing model as preview.
 
-### Stage 8 — AI suite
-Status: **Pending after core editor/export maturity.**
-- Auto captions.
-- Silence remover / smart cut.
-- Background removal.
-- Auto reframe.
-- Scene detection.
-- Object/face tracking assistance.
-- Smart search.
-- Upscale/frame interpolation/AI slow motion.
-- Later: script-to-video, image-to-video, AI voice/avatar/B-roll.
+## Stage 8 — AI suite
+**Pending after core/export maturity.**
+Auto captions, silence/smart cut, background removal, auto reframe, scene detection, tracking assistance, smart search, upscale/interpolation/AI slow-mo; later generative tools.
 
-### Stage 9 — Templates & asset ecosystem
-Status: **Pending.**
-Server-delivered templates, effects, transitions, stickers, fonts, music, filters, LUTs and text styles without requiring an APK update for every content addition.
+## Stage 9 — Templates & assets
+**Pending.**
+Server-delivered templates/effects/transitions/stickers/fonts/music/filters/LUT/text styles.
 
-### Stage 10 — Account & cloud
-Status: **Pending.**
-Login, project backup/sync, cross-device workflow, asset download/favorites/history and entitlement state.
+## Stage 10 — Account & cloud
+**Pending.**
+Login, backup/sync, cross-device, asset history/favorites, entitlements.
 
-### Stage 11 — Anti-flop performance program
-Status: **Continuous.**
-Mandatory stress cases:
-- 5/30/60-minute projects.
-- 50+ and 100+ clips.
-- Multiple audio layers.
-- 4K sources.
-- Many text/effect layers later.
-- Low/mid/high-end Android.
-- Background/restore, interrupted export, low storage and corrupt media.
-Track FPS, RAM, CPU/GPU, dropped frames, decoder latency, export speed and crash rate.
+## Stage 11 — Anti-flop performance
+**Continuous.**
+Test 5/30/60 min projects, 50+/100+ clips, multi-audio, 4K, later many text/effects, low/mid/high Android, background restore, interrupted export, low storage/corrupt media. Track FPS/RAM/CPU/GPU/dropped frames/decoder latency/export speed/crash rate.
 
-### Stage 12 — Production release
-Status: **Pending.**
-Onboarding, project management polish, account/subscription if required, analytics, crash reporting, remote config/feature flags, privacy/security and Play Store readiness.
+## Stage 12 — Production release
+**Pending.**
+Onboarding/project polish, analytics/crash reporting, remote config/feature flags, privacy/security, subscriptions if required, Play Store readiness.
 
 ---
 
-## Execution roadmap from current state
-
-### Patch 07 — Audio Editing Pro Foundation
-Locked after device/CI verification.
-
-### Patch 08 — Core Visual Transform Engine
-Current patch.
-- Per-clip transform model.
-- Crop/rotate/flip.
-- Scale/position/opacity.
-- Fit/fill.
-- Canvas/aspect ratio/background.
-- Preview pipeline backed by renderer-independent transform state for later export reuse.
-- Schema v8 migration and undo/redo integration.
-
-### Patch 09 — Speed / Freeze / Reverse Foundation
-- Speed model and duration mapping.
-- Normal speed controls.
-- Freeze frame.
-- Reverse pipeline design.
-- Speed curve groundwork.
-
-### Patch 10 — Visual Overlay / PIP Tracks
-- Independent visual layers with timeline timing.
-- Image/video overlays.
-- Z-order/layer selection.
-- Transform controls on overlays.
-
-### Patch 11+ — Text, effects, transitions, pro tools
-Continue through master stages while protecting timeline/render architecture.
+## Patch roadmap
+- **Patch 07:** Audio Editing Pro Foundation — locked after CI/device verification.
+- **Patch 08:** Core Visual Transform Engine — locked after CI/device verification.
+- **Patch 09:** Speed / Freeze / Reverse Foundation — current patch.
+  - `ClipTiming` + `ClipTimeMap`.
+  - Speed presets and duration mapping.
+  - Forward speed preview.
+  - Reverse seek-driven preview foundation.
+  - Freeze insertion at playhead.
+  - Timing-aware split/trim/thumbnails/persistence/undo-redo.
+- **Patch 10:** Visual Overlay / PIP Tracks.
+  - Timed independent visual layers.
+  - Image/video overlays.
+  - Z-order/layer selection.
+  - Overlay transform controls.
+  - Preview composition architecture designed for export reuse.
+- **Patch 11+:** Text, effects/transitions, pro visual tools, then production export and AI stages.
 
 ## Release gates
-Before declaring a major stage stable:
-- No reproducible crash in its acceptance suite.
+Before locking a major stage:
+- No reproducible crash in acceptance suite.
 - Saved project reopens accurately.
-- Undo/redo cannot corrupt the project.
-- UI respects system insets and remains usable on small screens.
-- Feature has a path to deterministic export; avoid preview-only architecture that cannot be rendered later.
+- Undo/redo cannot corrupt project state.
+- UI respects system insets/small screens.
+- Feature has a deterministic export path; avoid preview-only state that cannot later render.

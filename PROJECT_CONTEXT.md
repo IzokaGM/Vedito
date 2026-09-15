@@ -1,116 +1,102 @@
 # Vedito — Canonical Project Context
 
-> **Read this file first before changing Vedito.** This is the handoff document for any AI/developer continuing the project.
+> Read this file first before changing Vedito. It is the canonical handoff for another AI/developer.
 
 ## Product goal
-Vedito is a premium, native Android video editor targeting **CapCut-class capability and reliability** over time. It must not be a pixel-for-pixel CapCut clone and must not reuse CapCut/Cutrim proprietary assets or source. The target is comparable editing capability, smooth UX, strong performance, and a distinct Vedito identity.
+Vedito is a premium native Android video editor targeting CapCut-class breadth, reliability and performance over iterative releases. It must have its own identity and must not copy CapCut/Cutrim proprietary source/assets.
 
 ## Locked identity
-- App/brand: **Vedito**
+- Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
-- Platform focus: **Android first**
-- Current version in this patch: **0.8.0 / versionCode 8**
+- Android first
+- Current patch: **0.9.0 / versionCode 9**
 
-## Locked technical decisions
-- **Native Android/Kotlin**, not React Native.
-- Standalone APK: **no Metro, Hermes, JavaScript runtime, or development server dependency**.
-- Minimum SDK 26; target/compile SDK 37.
-- Java 17 toolchain.
-- Current UI is XML + ViewBinding + custom native Views.
-- Current preview uses Android `MediaPlayer` + `TextureView`.
-- Heavy editing/rendering can move to MediaCodec/OpenGL/C++ modules later when required by performance, but do not prematurely rewrite stable modules.
-- Project persistence currently uses `SharedPreferences` + JSON through `ProjectRepository`; migration paths must preserve old projects.
+## Locked technical direction
+- Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
+- Standalone APK: no Metro/Hermes/JS runtime/dev-server dependency.
+- minSdk 26, target/compile SDK 37, Java 17.
+- XML + ViewBinding + custom native Views currently.
+- Preview currently uses native `MediaPlayer` + `TextureView`.
+- Heavy deterministic rendering can later use MediaCodec/OpenGL/C++ where justified; avoid giant dependencies prematurely.
+- Project persistence is JSON in `SharedPreferences` via `ProjectRepository`; migrations must preserve older projects.
 
-## Repository / delivery rules
-The owner works mainly from a phone and deploys patches through GitHub Actions.
+## Delivery rules
+Owner works mainly from phone/GitHub Actions.
+1. Code patches are ZIPs with repository-root paths.
+2. **Never put `.yml`/`.yaml` inside patch ZIP.**
+3. Workflow changes are separate files.
+4. Prefer focused patches, not unrelated rewrites.
+5. A button is not a completed feature unless behavior is real and persistence/export path is considered.
+6. Ask confirmation before a new patch unless user already explicitly told you to start.
 
-Every code patch delivered by an AI should:
-1. Be a ZIP whose internal paths are correct for extracting at repository root.
-2. **Never include `.yml` or `.yaml` files inside the ZIP.**
-3. If a workflow needs changing, provide that workflow file separately.
-4. Prefer a small, focused patch rather than unrelated rewrites.
-5. Do not claim a feature is finished merely because its button/UI exists; it must perform the real action and persist correctly where relevant.
-6. Ask for confirmation before building a new patch unless the user has explicitly said to start/build that patch.
-
-Current CI concept outside patch ZIP:
-- `.github/workflows/01-auto-unzip.yml`: reacts to uploaded patch ZIP, extracts to repo root, rejects YML/YAML inside the ZIP, commits extracted files.
-- `.github/workflows/02-build-apk.yml`: starts after successful unzip workflow and builds the native Android APK.
+Current external CI concept:
+- `.github/workflows/01-auto-unzip.yml`: unzip uploaded patch ZIP + commit.
+- `.github/workflows/02-build-apk.yml`: build after successful unzip workflow.
 
 ## Product quality rules
-Vedito should be built as a real editor, not a demo:
 - Engine correctness before feature count.
-- Preview state, saved project state, and final export state must agree.
-- Destructive timeline edits require undo/redo where practical.
-- Avoid hardcoded screen-safe-area assumptions; use system insets.
-- Avoid unnecessary dependencies and APK bloat.
-- Test long/multi-clip projects and low/mid-range Android devices.
-- Never copy Cutrim code. A previous Cutrim repo was supplied only to illustrate a simple standalone native APK build style.
+- Preview/project/export state must converge on the same model.
+- Destructive edits should support undo/redo.
+- Use real system insets; no hardcoded safe areas.
+- Keep dependencies/APK bloat controlled.
+- Stress multi-clip/long projects and low/mid-range devices.
+- Never copy Cutrim source; it was shown only as an example of simple standalone APK delivery.
 
-## Current architecture
-Primary model:
-- `MediaAsset`: source video metadata.
-- `Clip`: trimmed reference to a video asset. Main video clips are ripple-sequenced and now carry a per-clip `ClipTransform`.
-- `AudioAsset`: source audio metadata.
-- `AudioClip`: timeline-positioned audio reference with source trim, volume/mute and fade state. Audio clips can overlap.
-- `Project`: assets, video clips, audio assets/clips, project-wide `CanvasSettings`, playhead, selections, timeline zoom and viewport.
+## Current core model
+- `MediaAsset`: video source metadata.
+- `Clip`: source trim + `ClipTransform` + `ClipTiming`.
+- `ClipTiming`: speed, playback mode (FORWARD/REVERSE/FREEZE), freeze source frame/duration.
+- `ClipTimeMap`: canonical source↔timeline time mapping. Future speed curves/export must build on this rather than duplicating timing math in UI.
+- `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
+- `Project`: video/audio assets and clips, canvas, playhead, selection, zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — project JSON persistence/migration.
-- `core/timeline/TimelineIndex.kt` — maps project timeline time to video clips.
-- `core/timeline/TimelineEditor.kt` — video timeline destructive operations.
-- `core/timeline/EditorHistory.kt` — bounded runtime undo/redo snapshots.
-- `feature/editor/timeline/TimelineScrubberView.kt` — video timeline gestures/rendering.
-- `feature/editor/player/PreviewPlayer.kt` — video preview and real-time application of per-clip transform state.
-- `core/visual/VisualTransformMath.kt` — renderer-independent transform normalization/crop/canvas math intended to be shared with the future exporter.
-- `feature/editor/visual/TransformToolbarView.kt` — compact transform/canvas controls.
-- `core/audio/AudioPlaybackEngine.kt` — multi-audio preview synchronization/mixing using native MediaPlayer slots, including fade gain.
-- `core/audio/AudioTimelineEditor.kt` — pure split/normalization/fade edit math.
-- `core/audio/AudioWaveformCache.kt` — background PCM waveform decode + disk cache.
-- `feature/editor/audio/AudioTimelineView.kt` — audio lane visualization and selection.
+- `core/projects/ProjectRepository.kt` — persistence, schema v9.
+- `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
+- `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
+- `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
+- `feature/editor/timeline/TimelineScrubberView.kt` — scrub/zoom/trim/reorder UI, timing-aware trim.
+- `feature/editor/player/PreviewPlayer.kt` — forward speed preview plus seek-driven reverse/freeze playback foundation.
+- `feature/editor/timing/TimingToolbarView.kt` — speed/freeze/reverse controls.
+- `core/visual/VisualTransformMath.kt` / `TransformToolbarView.kt` — visual transforms/canvas.
+- `core/audio/*` + `feature/editor/audio/AudioTimelineView.kt` — audio foundation.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
 ## Completed progression
-- Native clean rewrite with standalone APK and Vedito branding.
-- Status/navigation bar insets fixed.
-- Real video thumbnails.
-- Frame-aware scrub/playhead.
-- Trim, split, delete.
-- Multi-video project model.
-- Add video, reorder, ripple behavior.
-- Autosave/reopen state.
-- Undo/redo.
-- Timeline pinch zoom, snapping, duplicate, replace.
-- Patch 06: audio asset/clip model, audio import, overlapping audio preview, audio lanes, selection, volume, mute, delete, autosave and undo/redo integration.
-- Patch 07: cached PCM waveforms, audio drag/move + snapping, trim handles, split, fades and extract-audio from selected video clip.
-- Patch 08: per-clip scale/position/rotate/flip/opacity/crop/fit-fill, project canvas ratio/background, source dimensions, transform preview and schema v8 persistence.
+- Native clean rewrite and standalone APK.
+- Proper status/navigation insets.
+- Video import, real thumbnails, playback/scrub.
+- Trim/split/delete, multi-video timeline, add/reorder/ripple.
+- Autosave/reopen, undo/redo, zoom, snapping, duplicate/replace.
+- Audio import, overlapping lanes, waveform, move/trim/split/fades, extract-audio for normal 1× forward clips.
+- Per-clip scale/position/rotate/flip/opacity/crop/fit-fill + project canvas ratio/background.
+- Patch 09: timing model, uniform speed, reverse foundation, freeze clips, timing persistence and timing-aware timeline math.
 
-## Explicitly not completed yet
-Do not assume these exist:
-- Audio ducking, noise reduction/voice enhancement, pitch/voice effects, beat detection/markers and voice-over recording.
-- Freeform gesture transform handles are not implemented yet; Patch 08 uses compact button controls over real transform state.
-- Speed/speed curves/reverse/freeze.
-- Multi-layer visual overlays/PIP.
+## Patch 09 behavior/limits
+- Speed presets: 0.5× to 2×. Timeline duration is source duration / speed.
+- Reverse project semantics are real and persistent. Preview is seek-driven and intentionally mutes source audio; production reverse decoding/audio belongs in the render engine later.
+- Freeze inserts a real timeline hold clip at the playhead; default 2s.
+- External audio remains on project timeline and continues across retimed/reverse/freeze video.
+- Extract-audio is deliberately disabled on retimed/reverse/freeze video because current AudioClip model does not yet time-stretch/reverse extracted audio.
+- Speed curves are not yet exposed; `ClipTimeMap` is the groundwork for the later curve mapper.
+
+## Explicitly not completed
+- Speed curves UI/easing.
+- Production reverse decoder or reversed source audio.
+- Freeze duration UI beyond default insertion.
+- Visual overlay/PIP tracks.
+- Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Text/captions.
 - Effects/transitions/color grading.
 - Keyframes/masks/chroma/tracking/stabilization.
-- Production export/compositor.
-- AI features, templates, cloud/account/subscription.
+- Production export compositor.
+- AI/templates/cloud/account/subscription.
 
-## Current patch acceptance target (0.8.0)
-A valid Patch 08 test is:
-1. Select a clip and change scale/position/rotation/flip/opacity/crop/fit-fill.
-2. Preview updates immediately and different clips retain independent visual state.
-3. Cycle canvas Source/9:16/16:9/1:1/4:5 and background colors.
-4. Split/duplicate a transformed clip and verify inherited transform state.
-5. Undo/redo visual and canvas edits.
-6. Close/reopen the project; transforms and canvas settings persist.
-7. Older schema projects open with safe default transforms.
-8. Playback across clips applies each clip's own transform.
+## Next milestone
+**Patch 10 — Visual Overlay / PIP Tracks**
+- independent timed image/video overlay layers,
+- z-order/layer selection,
+- overlay transform state,
+- preview composition architecture that can later feed deterministic export.
 
-## Non-goals / safety against architecture drift
-- Do not return to React Native unless the owner explicitly reverses the decision.
-- Do not build a giant FFmpeg dependency merely for basic preview/editing. Introduce heavy native components only for a clear rendering requirement.
-- Do not rewrite the whole app just to add one feature.
-- Do not make UI controls that are intentionally nonfunctional.
-
-See `WORKPLAN.md` for the master roadmap and current next milestone.
+See `WORKPLAN.md` for the full roadmap.

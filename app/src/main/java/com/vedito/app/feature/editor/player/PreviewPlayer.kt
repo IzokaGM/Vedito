@@ -3,15 +3,19 @@ package com.vedito.app.feature.editor.player
 import android.content.Context
 import android.graphics.Matrix
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Surface
 import android.view.TextureView
 import com.vedito.app.core.model.ClipFitMode
+import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.visual.VisualTransformMath
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 class PreviewPlayer(
     private val context: Context,
@@ -26,6 +30,8 @@ class PreviewPlayer(
         fun onError(message: String)
     }
 
+    private enum class VirtualMode { NONE, REVERSE, FREEZE }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
     private var mediaUri: Uri? = null
@@ -39,17 +45,39 @@ class PreviewPlayer(
     private var loadGeneration = 0
     private var visualTransform = ClipTransform()
 
+    private var timingMode = ClipPlaybackMode.FORWARD
+    private var playbackSpeed = 1f
+    private var segmentStartMs = 0
+    private var segmentEndMs = 0
+    private var freezeDurationMs = 0
+    private var startTimelineOffsetMs = 0
+
+    private var virtualMode = VirtualMode.NONE
+    private var virtualStartedAt = 0L
+    private var virtualStartSourceMs = 0
+    private var virtualLastSeekAt = 0L
+    private var virtualPlaying = false
+
     val currentUri: Uri?
         get() = mediaUri
 
     val isReady: Boolean
         get() = prepared && player != null
 
+    val virtualTimelineElapsedMs: Int
+        get() = if (!virtualPlaying || virtualMode != VirtualMode.FREEZE) startTimelineOffsetMs else {
+            (startTimelineOffsetMs + (SystemClock.uptimeMillis() - virtualStartedAt).toInt()).coerceAtMost(freezeDurationMs)
+        }
+
     private val ticker = object : Runnable {
         override fun run() {
             val active = player
             if (active != null && prepared) {
-                listener.onProgress(active.currentPosition.coerceAtLeast(0), durationMs, active.isPlaying)
+                when (virtualMode) {
+                    VirtualMode.NONE -> listener.onProgress(active.currentPosition.coerceAtLeast(0), durationMs, active.isPlaying)
+                    VirtualMode.REVERSE -> tickReverse(active)
+                    VirtualMode.FREEZE -> tickFreeze(active)
+                }
             }
             mainHandler.postDelayed(this, 60L)
         }
@@ -67,9 +95,26 @@ class PreviewPlayer(
         applyVideoTransform(textureView.width, textureView.height)
     }
 
+    fun configureTiming(
+        mode: ClipPlaybackMode,
+        speed: Float,
+        sourceStartMs: Int,
+        sourceEndMs: Int,
+        freezeDurationMs: Int = 0,
+        startTimelineOffsetMs: Int = 0
+    ) {
+        timingMode = mode
+        playbackSpeed = speed.coerceIn(0.5f, 2f)
+        segmentStartMs = sourceStartMs.coerceAtLeast(0)
+        segmentEndMs = sourceEndMs.coerceAtLeast(segmentStartMs)
+        this.freezeDurationMs = freezeDurationMs.coerceAtLeast(0)
+        this.startTimelineOffsetMs = startTimelineOffsetMs.coerceAtLeast(0)
+    }
+
     fun load(uri: Uri, startPositionMs: Int = 0, playWhenReady: Boolean = false) {
         pendingStartPositionMs = startPositionMs.coerceAtLeast(0)
         pendingAutoPlay = playWhenReady
+        stopVirtual(notify = false)
 
         if (mediaUri == uri && isReady) {
             if (playWhenReady) playFrom(pendingStartPositionMs) else seekTo(pendingStartPositionMs)
@@ -81,34 +126,41 @@ class PreviewPlayer(
         if (textureView.isAvailable) prepare(uri)
     }
 
-    fun isPlaying(): Boolean = player?.let { prepared && it.isPlaying } == true
+    fun isPlaying(): Boolean = virtualPlaying || player?.let { prepared && it.isPlaying } == true
 
     fun playFrom(positionMs: Int) {
         val active = player ?: return
         if (!prepared) return
         val target = positionMs.coerceIn(0, max(0, durationMs))
-        pendingPlayAfterSeek = true
-        active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
+        when (timingMode) {
+            ClipPlaybackMode.FORWARD -> startForward(active, target)
+            ClipPlaybackMode.REVERSE -> startReverse(active, target)
+            ClipPlaybackMode.FREEZE -> startFreeze(active, target)
+        }
     }
 
     fun pause() {
         pendingPlayAfterSeek = false
         pendingAutoPlay = false
-        val active = player ?: return
-        if (prepared && active.isPlaying) active.pause()
+        stopVirtual(notify = false)
+        val active = player
+        if (active != null && prepared && active.isPlaying) active.pause()
         listener.onPlaybackStateChanged(false)
     }
 
     fun seekTo(positionMs: Int) {
         pendingPlayAfterSeek = false
+        stopVirtual(notify = false)
         val active = player ?: return
         if (!prepared) return
         val target = positionMs.coerceIn(0, max(0, durationMs))
+        runCatching { active.setVolume(1f, 1f) }
         active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
     }
 
     fun release() {
         loadGeneration++
+        stopVirtual(notify = false)
         mainHandler.removeCallbacks(ticker)
         player?.release()
         player = null
@@ -137,6 +189,7 @@ class PreviewPlayer(
         player?.release()
         player = null
         prepared = false
+        stopVirtual(notify = false)
 
         val surfaceTexture = textureView.surfaceTexture ?: return
         val surface = Surface(surfaceTexture)
@@ -174,6 +227,7 @@ class PreviewPlayer(
                     if (generation != loadGeneration) return@setOnSeekCompleteListener
                     if (pendingPlayAfterSeek) {
                         pendingPlayAfterSeek = false
+                        applyForwardPlaybackParams(ready)
                         ready.start()
                         listener.onPlaybackStateChanged(true)
                     }
@@ -181,12 +235,14 @@ class PreviewPlayer(
                 setOnCompletionListener {
                     if (generation != loadGeneration) return@setOnCompletionListener
                     pendingPlayAfterSeek = false
+                    stopVirtual(notify = false)
                     listener.onPlaybackStateChanged(false)
                     listener.onProgress(durationMs, durationMs, false)
                 }
                 setOnErrorListener { _, _, _ ->
                     if (generation != loadGeneration) return@setOnErrorListener true
                     pendingPlayAfterSeek = false
+                    stopVirtual(notify = false)
                     prepared = false
                     listener.onError("This video codec cannot be previewed on this device.")
                     true
@@ -201,10 +257,93 @@ class PreviewPlayer(
         }
     }
 
-    /**
-     * Applies Vedito's renderer-independent ClipTransform to the TextureView preview.
-     * The export compositor must consume the same normalized transform values later.
-     */
+    private fun startForward(active: MediaPlayer, target: Int) {
+        stopVirtual(notify = false)
+        runCatching { active.setVolume(1f, 1f) }
+        pendingPlayAfterSeek = true
+        active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
+    }
+
+    private fun startReverse(active: MediaPlayer, target: Int) {
+        pendingPlayAfterSeek = false
+        if (active.isPlaying) active.pause()
+        runCatching { active.setVolume(0f, 0f) }
+        virtualMode = VirtualMode.REVERSE
+        virtualPlaying = true
+        virtualStartedAt = SystemClock.uptimeMillis()
+        val playableEnd = (segmentEndMs - 1).coerceAtLeast(segmentStartMs)
+        virtualStartSourceMs = target.coerceIn(segmentStartMs, playableEnd)
+        virtualLastSeekAt = 0L
+        active.seekTo(virtualStartSourceMs.toLong(), MediaPlayer.SEEK_CLOSEST)
+        listener.onPlaybackStateChanged(true)
+    }
+
+    private fun startFreeze(active: MediaPlayer, target: Int) {
+        pendingPlayAfterSeek = false
+        if (active.isPlaying) active.pause()
+        runCatching { active.setVolume(0f, 0f) }
+        virtualMode = VirtualMode.FREEZE
+        virtualPlaying = true
+        virtualStartedAt = SystemClock.uptimeMillis()
+        virtualStartSourceMs = target
+        active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
+        listener.onPlaybackStateChanged(true)
+    }
+
+    private fun tickReverse(active: MediaPlayer) {
+        if (!virtualPlaying) return
+        val now = SystemClock.uptimeMillis()
+        val elapsed = now - virtualStartedAt
+        val target = (virtualStartSourceMs - elapsed * playbackSpeed).roundToInt().coerceAtLeast(segmentStartMs)
+        if (now - virtualLastSeekAt >= REVERSE_SEEK_INTERVAL_MS) {
+            active.seekTo(target.toLong(), MediaPlayer.SEEK_CLOSEST)
+            virtualLastSeekAt = now
+        }
+        val finished = target <= segmentStartMs
+        if (finished) {
+            stopVirtual(notify = false)
+            listener.onPlaybackStateChanged(false)
+            listener.onProgress(target, durationMs, false)
+        } else {
+            listener.onProgress(target, durationMs, true)
+        }
+    }
+
+    private fun tickFreeze(active: MediaPlayer) {
+        if (!virtualPlaying) return
+        val elapsed = (SystemClock.uptimeMillis() - virtualStartedAt).toInt()
+        val absoluteElapsed = startTimelineOffsetMs + elapsed
+        val finished = freezeDurationMs > 0 && absoluteElapsed >= freezeDurationMs
+        if (active.currentPosition != virtualStartSourceMs && elapsed < 200) {
+            active.seekTo(virtualStartSourceMs.toLong(), MediaPlayer.SEEK_CLOSEST)
+        }
+        if (finished) {
+            val finalElapsed = freezeDurationMs
+            startTimelineOffsetMs = finalElapsed
+            stopVirtual(notify = false)
+            listener.onPlaybackStateChanged(false)
+            listener.onProgress(virtualStartSourceMs, durationMs, false)
+        } else {
+            listener.onProgress(virtualStartSourceMs, durationMs, true)
+        }
+    }
+
+    private fun stopVirtual(notify: Boolean) {
+        val wasPlaying = virtualPlaying
+        virtualPlaying = false
+        virtualMode = VirtualMode.NONE
+        if (wasPlaying && notify) listener.onPlaybackStateChanged(false)
+    }
+
+    private fun applyForwardPlaybackParams(active: MediaPlayer) {
+        runCatching {
+            active.playbackParams = PlaybackParams()
+                .setSpeed(playbackSpeed)
+                .setPitch(1f)
+        }
+    }
+
+    /** Applies Vedito's renderer-independent ClipTransform to the TextureView preview. */
     private fun applyVideoTransform(viewWidth: Int, viewHeight: Int) {
         if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) return
 
@@ -245,5 +384,9 @@ class PreviewPlayer(
         }
         textureView.setTransform(matrix)
         textureView.alpha = transform.opacity
+    }
+
+    companion object {
+        private const val REVERSE_SEEK_INTERVAL_MS = 85L
     }
 }

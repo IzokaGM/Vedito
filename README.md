@@ -1,41 +1,35 @@
-# Vedito Patch 08 — Core Visual Transform Engine
+# Vedito Patch 09 — Speed / Freeze / Reverse Foundation
 
-Version: **0.8.0 / versionCode 8**  
+Version: **0.9.0** (`versionCode 9`)
 Package: **`com.vedito.app`**
 
-## What this patch adds
-- Per-clip visual transform model with deterministic persistence.
-- Scale and X/Y position.
-- 90° rotation, horizontal flip and vertical flip.
-- Opacity.
-- Edge crop state and real preview cropping.
-- Fit / Fill behavior.
-- Project canvas ratios: Source, 9:16, 16:9, 1:1 and 4:5.
-- Canvas backgrounds: Black, Charcoal, White and Violet.
-- Source width/height metadata probing.
-- Real-time `TextureView` transform preview.
-- Undo/redo for clip transforms and canvas changes.
-- Save/reopen migration through project schema **v8**.
-- Compact horizontally-scrollable visual toolbar to avoid making the editor vertically heavy.
-- Renderer-independent `VisualTransformMath` so the future export compositor consumes the same transform state.
+## What changed
+- Added renderer-independent `ClipTiming` state and `ClipTimeMap` source↔timeline mapping.
+- Uniform speed presets: **0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×**.
+- Timeline duration now reflects clip speed.
+- Forward preview uses Android `MediaPlayer` playback speed.
+- Reverse mode has a real seek-driven reverse preview foundation (source audio is muted while reversing).
+- Freeze inserts a real **2-second hold clip at the playhead**, preserving the surrounding source pieces.
+- Split, duplicate, reorder, delete and project persistence understand timing state.
+- Reverse-aware split and trim mapping.
+- Freeze clips can be split but intentionally do not expose source trim handles.
+- Timing edits participate in undo/redo and autosave/reopen.
+- Schema migrated to **v9**; older projects default to normal 1× forward timing.
+- Extract-audio is disabled for retimed/reversed/freeze clips until retimed audio rendering exists, avoiding desync.
 
-## Visual toolbar behavior
-Select a video clip, then use the horizontal toolbar above the video timeline. Crop edge buttons advance that edge in 5% steps and wrap after 40%; `Crop reset` clears all crop edges. Opacity cycles 100% → 75% → 50% → 25% → 100%. Canvas and BG buttons cycle through their available project-wide settings.
+## Device acceptance test
+1. Open an existing project and select a normal clip.
+2. Change speed down/up; verify timeline width/duration and playback speed change together.
+3. Save/leave/reopen; verify selected speed persists.
+4. Toggle Reverse; verify timeline plays backward and reaches the next clip cleanly.
+5. Pause/restart while reversing; verify playback resumes from the current playhead.
+6. Put playhead inside a normal clip and tap Freeze; verify a 2s freeze clip is inserted at that exact point.
+7. Play through normal → freeze → following clip and verify timeline/audio keep advancing.
+8. Split/duplicate/delete/reorder speed/reverse/freeze clips and exercise undo/redo.
+9. Reopen the project and verify all timing states remain intact.
 
-## Acceptance test
-1. Open a project and select a video clip.
-2. Change scale, position, rotation, flip, opacity, fit/fill and crop; preview must update immediately.
-3. Change canvas ratio and background.
-4. Split or duplicate the transformed clip; inherited visual state must remain consistent.
-5. Undo/redo visual and canvas edits.
-6. Close and reopen the project; visual state and canvas settings must persist.
-7. Play across multiple clips with different transforms; each clip must switch to its own transform.
-8. Open an older Patch 07 project; it must load with default visual transform values.
+## Important foundation note
+Reverse preview is currently seek-driven rather than a production reverse decoder. That is deliberate: project state and deterministic time mapping are now correct, while the final reverse frames/audio will later be rendered by the production compositor/export engine.
 
-## Validation performed before packaging
-- Pure Kotlin visual/timeline core compile: passed.
-- Visual transform normalization + split inheritance smoke test: passed.
-- XML well-formedness/static path checks: passed.
-- Full Android Gradle build cannot run in the packaging environment because external Gradle distribution download is blocked; GitHub Actions remains the APK compile gate.
-
-No `.yml` or `.yaml` files belong inside this patch ZIP.
+## Delivery
+This ZIP is intended to extract at repository root. It contains **no GitHub workflow YAML files**. Existing unzip/build workflows remain separate.

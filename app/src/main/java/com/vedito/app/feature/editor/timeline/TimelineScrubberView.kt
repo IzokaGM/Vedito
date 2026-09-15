@@ -16,6 +16,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import com.vedito.app.R
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipPlaybackMode
+import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.FrameTimecode
 import com.vedito.app.core.timeline.TimelineIndex
 import kotlin.math.abs
@@ -219,11 +221,11 @@ class TimelineScrubberView @JvmOverloads constructor(
                 dragClipId = selectedClip?.id
 
                 touchMode = when {
-                    selectedBounds != null && selectedClip != null && selectedBounds.left in (body.left - handleHit)..(body.right + handleHit) && abs(event.x - selectedBounds.left) <= handleHit -> {
+                    selectedBounds != null && selectedClip != null && selectedClip.timing.mode != ClipPlaybackMode.FREEZE && selectedBounds.left in (body.left - handleHit)..(body.right + handleHit) && abs(event.x - selectedBounds.left) <= handleHit -> {
                         beginTrim(selectedClip)
                         TouchMode.TRIM_LEFT
                     }
-                    selectedBounds != null && selectedClip != null && selectedBounds.right in (body.left - handleHit)..(body.right + handleHit) && abs(event.x - selectedBounds.right) <= handleHit -> {
+                    selectedBounds != null && selectedClip != null && selectedClip.timing.mode != ClipPlaybackMode.FREEZE && selectedBounds.right in (body.left - handleHit)..(body.right + handleHit) && abs(event.x - selectedBounds.right) <= handleHit -> {
                         beginTrim(selectedClip)
                         TouchMode.TRIM_RIGHT
                     }
@@ -291,17 +293,30 @@ class TimelineScrubberView @JvmOverloads constructor(
     private fun updateTrim(x: Float, finished: Boolean) {
         val id = selectedClipId ?: return
         val usable = timelineRect().width().coerceAtLeast(1f)
-        val deltaMs = ((x - downX) / usable * trimDurationAtDown).roundToInt()
-        val minimum = MIN_CLIP_MS
+        val clip = clips.firstOrNull { it.id == id } ?: return
+        if (clip.timing.mode == ClipPlaybackMode.FREEZE) return
+        val deltaTimelineMs = ((x - downX) / usable * trimDurationAtDown).roundToInt()
+        val deltaSourceMs = (deltaTimelineMs * ClipTimeMap.normalizedSpeed(clip)).roundToInt()
+        val minimum = (MIN_CLIP_MS * ClipTimeMap.normalizedSpeed(clip)).roundToInt().coerceAtLeast(1)
         val fps = frameRatesByClipId[id] ?: 30f
 
-        if (touchMode == TouchMode.TRIM_LEFT) {
-            val raw = (trimOriginalStart + deltaMs).coerceIn(0, trimOriginalEnd - minimum)
+        if (clip.timing.mode == ClipPlaybackMode.REVERSE) {
+            if (touchMode == TouchMode.TRIM_LEFT) {
+                lastTrimStart = trimOriginalStart
+                val raw = (trimOriginalEnd - deltaSourceMs).coerceAtLeast(trimOriginalStart + minimum)
+                lastTrimEnd = FrameTimecode.quantizeOffsetMs(raw, fps).coerceAtLeast(trimOriginalStart + minimum)
+            } else {
+                val raw = (trimOriginalStart - deltaSourceMs).coerceIn(0, trimOriginalEnd - minimum)
+                lastTrimStart = FrameTimecode.quantizeOffsetMs(raw, fps).coerceIn(0, trimOriginalEnd - minimum)
+                lastTrimEnd = trimOriginalEnd
+            }
+        } else if (touchMode == TouchMode.TRIM_LEFT) {
+            val raw = (trimOriginalStart + deltaSourceMs).coerceIn(0, trimOriginalEnd - minimum)
             lastTrimStart = FrameTimecode.quantizeOffsetMs(raw, fps).coerceIn(0, trimOriginalEnd - minimum)
             lastTrimEnd = trimOriginalEnd
         } else {
             lastTrimStart = trimOriginalStart
-            val raw = (trimOriginalEnd + deltaMs).coerceAtLeast(trimOriginalStart + minimum)
+            val raw = (trimOriginalEnd + deltaSourceMs).coerceAtLeast(trimOriginalStart + minimum)
             lastTrimEnd = FrameTimecode.quantizeOffsetMs(raw, fps).coerceAtLeast(trimOriginalStart + minimum)
         }
         onTrimChanged?.invoke(id, lastTrimStart, lastTrimEnd, finished)
@@ -353,9 +368,12 @@ class TimelineScrubberView @JvmOverloads constructor(
 
         lastSnapMs = null
         val location = timelineIndex.locate(rawMs) ?: return rawMs.coerceIn(0, durationMs)
+        if (location.clip.timing.mode == ClipPlaybackMode.FREEZE) return rawMs.coerceIn(0, durationMs)
         val fps = frameRatesByClipId[location.clip.id] ?: 30f
-        val quantizedOffset = FrameTimecode.quantizeOffsetMs(location.offsetMs, fps)
-            .coerceIn(0, location.clip.durationMs)
+        val source = ClipTimeMap.sourcePositionAtTimelineOffset(location.clip, location.offsetMs)
+        val quantizedSource = FrameTimecode.quantizeOffsetMs(source, fps)
+            .coerceIn(location.clip.sourceStartMs, location.clip.sourceEndMs)
+        val quantizedOffset = ClipTimeMap.timelineOffsetForSourcePosition(location.clip, quantizedSource)
         return (location.timelineStartMs + quantizedOffset).coerceIn(0, durationMs)
     }
 
@@ -422,7 +440,8 @@ class TimelineScrubberView @JvmOverloads constructor(
         val visible = RectF(max(raw.left, body.left), body.top, min(raw.right, body.right), body.bottom)
         if (visible.right <= visible.left) return
         canvas.drawRoundRect(visible, 8f * density, 8f * density, selectedPaint)
-        if (touchMode != TouchMode.REORDER) {
+        val selected = clips.firstOrNull { it.id == selectedClipId }
+        if (touchMode != TouchMode.REORDER && selected?.timing?.mode != ClipPlaybackMode.FREEZE) {
             if (raw.left in body.left..body.right) drawTrimHandle(canvas, raw.left, body)
             if (raw.right in body.left..body.right) drawTrimHandle(canvas, raw.right, body)
         }

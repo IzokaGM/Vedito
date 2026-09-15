@@ -1,6 +1,7 @@
 package com.vedito.app.core.timeline
 
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.MediaAsset
 
 object TimelineMath {
@@ -11,7 +12,7 @@ object TimelineMath {
         val offsetMs: Int
     ) {
         val sourcePositionMs: Int
-            get() = clip.sourceStartMs + offsetMs
+            get() = ClipTimeMap.sourcePositionAtTimelineOffset(clip, offsetMs)
     }
 
     fun totalDurationMs(clips: List<Clip>): Int = clips.sumOf { it.durationMs }
@@ -49,15 +50,23 @@ object TimelineMath {
 
     fun sanitized(clips: List<Clip>, assets: List<MediaAsset>): List<Clip> {
         val assetsById = assets.associateBy { it.id }
-        return clips.mapNotNull { clip ->
-            val asset = assetsById[clip.assetId] ?: return@mapNotNull null
+        return clips.mapNotNull { original ->
+            val asset = assetsById[original.assetId] ?: return@mapNotNull null
             val duration = asset.durationMs
             if (duration <= 0) {
-                return@mapNotNull clip.takeIf { it.durationMs > 0 }
+                return@mapNotNull original.takeIf { it.sourceDurationMs > 0 }?.let(ClipTimeMap::normalizeTiming)
             }
-            val start = clip.sourceStartMs.coerceIn(0, duration)
-            val end = clip.sourceEndMs.coerceIn(start, duration)
-            if (end > start) clip.copy(sourceStartMs = start, sourceEndMs = end) else null
+            val start = original.sourceStartMs.coerceIn(0, duration)
+            val end = original.sourceEndMs.coerceIn(start, duration)
+            if (end <= start) return@mapNotNull null
+            val freezeSource = original.timing.freezeSourceMs.coerceIn(start, (end - 1).coerceAtLeast(start))
+            val clip = original.copy(
+                sourceStartMs = start,
+                sourceEndMs = end,
+                timing = original.timing.copy(freezeSourceMs = freezeSource)
+            )
+            val normalized = ClipTimeMap.normalizeTiming(clip)
+            if (normalized.timing.mode == ClipPlaybackMode.FREEZE && normalized.durationMs <= 0) null else normalized
         }
     }
 }

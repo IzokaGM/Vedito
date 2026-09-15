@@ -22,7 +22,7 @@ class TimelineIndex(private val clips: List<Clip>) {
         val timelineStartMs: Int,
         val offsetMs: Int
     ) {
-        val sourcePositionMs: Int get() = clip.sourceStartMs + offsetMs
+        val sourcePositionMs: Int get() = ClipTimeMap.sourcePositionAtTimelineOffset(clip, offsetMs)
     }
 
     fun locate(positionMs: Int): Location? {

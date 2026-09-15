@@ -7,6 +7,8 @@ import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipPlaybackMode
+import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
@@ -124,11 +126,26 @@ class ProjectRepository(context: Context) {
                         assetId = clip.optString("assetId").ifBlank { fallbackAssetId },
                         sourceStartMs = clip.optInt("sourceStartMs", 0),
                         sourceEndMs = clip.optInt("sourceEndMs", 0),
-                        transform = parseClipTransform(clip.optJSONObject("transform"))
+                        transform = parseClipTransform(clip.optJSONObject("transform")),
+                        timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0))
                     )
                 )
             }
         }
+    }
+
+
+    private fun parseClipTiming(json: JSONObject?, sourceStartMs: Int, sourceEndMs: Int): ClipTiming {
+        if (json == null) return ClipTiming(freezeSourceMs = sourceStartMs)
+        val mode = enumValueOrDefault(json.optString("mode"), ClipPlaybackMode.FORWARD)
+        val endSafe = (sourceEndMs - 1).coerceAtLeast(sourceStartMs)
+        return ClipTiming(
+            speed = json.optDouble("speed", 1.0).toFloat().coerceIn(ClipTiming.MIN_SPEED, ClipTiming.MAX_SPEED),
+            mode = mode,
+            freezeSourceMs = json.optInt("freezeSourceMs", sourceStartMs).coerceIn(sourceStartMs, endSafe),
+            freezeDurationMs = json.optInt("freezeDurationMs", ClipTiming.DEFAULT_FREEZE_DURATION_MS)
+                .coerceIn(ClipTiming.MIN_FREEZE_DURATION_MS, ClipTiming.MAX_FREEZE_DURATION_MS)
+        )
     }
 
     private fun parseClipTransform(json: JSONObject?): ClipTransform {
@@ -233,6 +250,7 @@ class ProjectRepository(context: Context) {
                     .put("sourceStartMs", clip.sourceStartMs)
                     .put("sourceEndMs", clip.sourceEndMs)
                     .put("transform", transformToJson(clip.transform))
+                    .put("timing", timingToJson(clip.timing))
             )
         }
 
@@ -285,6 +303,15 @@ class ProjectRepository(context: Context) {
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
 
+
+    private fun timingToJson(timing: ClipTiming): JSONObject {
+        return JSONObject()
+            .put("speed", timing.speed.coerceIn(ClipTiming.MIN_SPEED, ClipTiming.MAX_SPEED).toDouble())
+            .put("mode", timing.mode.name)
+            .put("freezeSourceMs", timing.freezeSourceMs)
+            .put("freezeDurationMs", timing.freezeDurationMs.coerceIn(ClipTiming.MIN_FREEZE_DURATION_MS, ClipTiming.MAX_FREEZE_DURATION_MS))
+    }
+
     private fun transformToJson(transform: ClipTransform): JSONObject {
         val safe = VisualTransformMath.normalize(transform)
         return JSONObject()
@@ -311,6 +338,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 8
+        private const val SCHEMA_VERSION = 9
     }
 }

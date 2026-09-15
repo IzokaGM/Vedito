@@ -23,11 +23,14 @@ import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.Clip
+import com.vedito.app.core.model.ClipPlaybackMode
+import com.vedito.app.core.model.ClipTiming
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.Project
 import com.vedito.app.core.projects.ProjectRepository
+import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
 import com.vedito.app.core.timeline.FrameTimecode
 import com.vedito.app.core.timeline.TimelineEditor
@@ -37,6 +40,7 @@ import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
+import com.vedito.app.feature.editor.timing.TimingToolbarView
 import com.vedito.app.feature.editor.visual.TransformToolbarView
 import com.vedito.app.ui.applySystemBarInsets
 import com.vedito.app.ui.configureVeditoSystemBars
@@ -157,6 +161,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioFadeOutButton.setOnClickListener { cycleSelectedAudioFade(inward = false) }
         binding.extractAudioButton.setOnClickListener { extractAudioFromSelectedVideo() }
         binding.visualToolbar.onAction = ::handleVisualAction
+        binding.timingToolbar.onAction = ::handleTimingAction
         binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
         binding.audioTimeline.onAudioClipSelected = { id ->
             selectedAudioClipId = id
@@ -181,6 +186,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             selectedClipId = id
             updateSelectionUi()
             updateVisualToolbar()
+            updateTimingToolbar()
             saveProject()
         }
         binding.timeline.onScrubbed = { position ->
@@ -282,7 +288,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     override fun onProgress(positionMs: Int, durationMs: Int, isPlaying: Boolean) {
-        if (!isPlaying || userScrubbing || clips.isEmpty()) return
+        if (userScrubbing || clips.isEmpty()) return
         val clipId = playbackClipId ?: return
         val clipIndex = clips.indexOfFirst { it.id == clipId }
         if (clipIndex < 0) return
@@ -290,18 +296,38 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val asset = assetFor(clip) ?: return
         if (previewPlayer.currentUri != Uri.parse(asset.uri)) return
 
-        if (positionMs >= clip.sourceEndMs - END_GUARD_MS) {
-            advancePlayback(clipIndex)
-            return
-        }
-        if (positionMs < clip.sourceStartMs - SEEK_GUARD_MS || positionMs > clip.sourceEndMs + SEEK_GUARD_MS) {
-            return
-        }
-
         val timelineStart = timelineIndex.startOf(clip.id)
-        val offset = (positionMs - clip.sourceStartMs).coerceIn(0, clip.durationMs)
-        setTimelinePosition(timelineStart + offset)
-        audioPlayback.sync(timelinePositionMs, playing = true)
+        when (clip.timing.mode) {
+            ClipPlaybackMode.FREEZE -> {
+                val offset = previewPlayer.virtualTimelineElapsedMs.coerceIn(0, clip.durationMs)
+                setTimelinePosition(timelineStart + offset)
+                if (offset >= clip.durationMs - END_GUARD_MS || !isPlaying) {
+                    advancePlayback(clipIndex)
+                } else {
+                    audioPlayback.sync(timelinePositionMs, playing = true)
+                }
+            }
+            ClipPlaybackMode.REVERSE -> {
+                val offset = ClipTimeMap.timelineOffsetForSourcePosition(clip, positionMs)
+                setTimelinePosition(timelineStart + offset)
+                if (positionMs <= clip.sourceStartMs + END_GUARD_MS || !isPlaying) {
+                    advancePlayback(clipIndex)
+                } else {
+                    audioPlayback.sync(timelinePositionMs, playing = true)
+                }
+            }
+            ClipPlaybackMode.FORWARD -> {
+                if (!isPlaying) return
+                if (positionMs >= clip.sourceEndMs - END_GUARD_MS) {
+                    advancePlayback(clipIndex)
+                    return
+                }
+                if (positionMs < clip.sourceStartMs - SEEK_GUARD_MS || positionMs > clip.sourceEndMs + SEEK_GUARD_MS) return
+                val offset = ClipTimeMap.timelineOffsetForSourcePosition(clip, positionMs)
+                setTimelinePosition(timelineStart + offset)
+                audioPlayback.sync(timelinePositionMs, playing = true)
+            }
+        }
     }
 
     override fun onPlaybackStateChanged(isPlaying: Boolean) {
@@ -355,7 +381,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         playbackClipId = next.id
         selectedClipId = next.id
         setTimelinePosition(timelineIndex.startOf(next.id))
-        showClip(next, next.sourceStartMs, play = true)
+        showClip(next, ClipTimeMap.sourcePositionAtTimelineOffset(next, 0), play = true)
     }
 
     private fun seekPreviewToTimeline(positionMs: Int) {
@@ -367,9 +393,100 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val asset = assetFor(clip) ?: return
         binding.playerError.visibility = View.GONE
         binding.playPauseButton.isEnabled = true
+        val timelineOffset = if (clip.timing.mode == ClipPlaybackMode.FREEZE) {
+            (timelinePositionMs - timelineIndex.startOf(clip.id)).coerceIn(0, clip.durationMs)
+        } else {
+            ClipTimeMap.timelineOffsetForSourcePosition(clip, sourcePositionMs)
+        }
         previewPlayer.setVisualTransform(clip.transform)
+        previewPlayer.configureTiming(
+            mode = clip.timing.mode,
+            speed = clip.timing.speed,
+            sourceStartMs = clip.sourceStartMs,
+            sourceEndMs = clip.sourceEndMs,
+            freezeDurationMs = clip.timing.freezeDurationMs,
+            startTimelineOffsetMs = timelineOffset
+        )
         applyCanvasPreviewLayout(clip)
         previewPlayer.load(Uri.parse(asset.uri), sourcePositionMs, play)
+    }
+
+    private fun handleTimingAction(action: TimingToolbarView.Action) {
+        when (action) {
+            TimingToolbarView.Action.SPEED_DOWN -> adjustSelectedSpeed(-1)
+            TimingToolbarView.Action.SPEED_UP -> adjustSelectedSpeed(1)
+            TimingToolbarView.Action.FREEZE -> insertFreezeAtPlayhead()
+            TimingToolbarView.Action.REVERSE -> toggleSelectedReverse()
+        }
+    }
+
+    private fun adjustSelectedSpeed(direction: Int) {
+        val id = selectedClipId ?: return
+        val selected = clips.firstOrNull { it.id == id } ?: return
+        if (selected.timing.mode == ClipPlaybackMode.FREEZE) return
+        val presets = SPEED_PRESETS
+        val currentIndex = presets.indices.minByOrNull { kotlin.math.abs(presets[it] - selected.timing.speed) } ?: 2
+        val nextIndex = (currentIndex + direction).coerceIn(0, presets.lastIndex)
+        val nextSpeed = presets[nextIndex]
+        if (kotlin.math.abs(nextSpeed - selected.timing.speed) < 0.001f) return
+
+        val before = snapshot()
+        val oldStart = timelineIndex.startOf(id)
+        val oldDuration = selected.durationMs.coerceAtLeast(1)
+        val local = (timelinePositionMs - oldStart).coerceIn(0, oldDuration)
+        val progress = local.toFloat() / oldDuration
+        clips = TimelineEditor.setSpeed(clips, id, nextSpeed)
+        refreshTimelineIndex()
+        val updated = clips.firstOrNull { it.id == id } ?: return
+        timelinePositionMs = (timelineIndex.startOf(id) + (updated.durationMs * progress).roundToInt())
+            .coerceIn(0, timelineIndex.totalDurationMs)
+        history.record(before)
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        renderTimelineState()
+        seekPreviewToTimeline(timelinePositionMs)
+        requestThumbnails()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun toggleSelectedReverse() {
+        val id = selectedClipId ?: return
+        val selected = clips.firstOrNull { it.id == id } ?: return
+        if (selected.timing.mode == ClipPlaybackMode.FREEZE) return
+        val before = snapshot()
+        val oldStart = timelineIndex.startOf(id)
+        val oldLocal = (timelinePositionMs - oldStart).coerceIn(0, selected.durationMs)
+        clips = TimelineEditor.toggleReverse(clips, id)
+        refreshTimelineIndex()
+        timelinePositionMs = (timelineIndex.startOf(id) + oldLocal).coerceIn(0, timelineIndex.totalDurationMs)
+        history.record(before)
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        renderTimelineState()
+        seekPreviewToTimeline(timelinePositionMs)
+        requestThumbnails()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun insertFreezeAtPlayhead() {
+        val before = snapshot()
+        val result = TimelineEditor.insertFreeze(clips, timelinePositionMs, ClipTiming.DEFAULT_FREEZE_DURATION_MS) ?: return
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        clips = result.clips
+        selectedClipId = result.selectedClipId
+        timelinePositionMs = result.playheadMs
+        history.record(before)
+        renderTimelineState()
+        seekPreviewToTimeline(timelinePositionMs)
+        requestThumbnails()
+        saveProject()
+        updateHistoryUi()
     }
 
     private fun handleVisualAction(action: TransformToolbarView.Action) {
@@ -465,6 +582,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun updateVisualToolbar() {
         val transform = clips.firstOrNull { it.id == selectedClipId }?.transform
         binding.visualToolbar.setState(transform, canvasSettings)
+    }
+
+    private fun updateTimingToolbar() {
+        binding.timingToolbar.setState(clips.firstOrNull { it.id == selectedClipId })
     }
 
     private fun applyCanvasPreviewLayout(preferredClip: Clip? = null) {
@@ -701,10 +822,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
             val range = replacementRange(original, replacementAsset.durationMs)
             clips = clips.toMutableList().apply {
-                this[index] = original.copy(
-                    assetId = replacementAsset.id,
-                    sourceStartMs = range.first,
-                    sourceEndMs = range.second
+                this[index] = ClipTimeMap.normalizeTiming(
+                    original.copy(
+                        assetId = replacementAsset.id,
+                        sourceStartMs = range.first,
+                        sourceEndMs = range.second
+                    )
                 )
             }
             selectedClipId = targetClipId
@@ -724,7 +847,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun replacementRange(original: Clip, replacementDurationMs: Int): Pair<Int, Int> {
         if (replacementDurationMs <= 1) return 0 to replacementDurationMs.coerceAtLeast(1)
-        val wantedDuration = original.durationMs.coerceAtLeast(1)
+        val wantedDuration = original.sourceDurationMs.coerceAtLeast(1)
         var start = original.sourceStartMs.coerceIn(0, replacementDurationMs - 1)
         var end = (start + wantedDuration).coerceAtMost(replacementDurationMs)
         if (end - start < wantedDuration) start = (end - wantedDuration).coerceAtLeast(0)
@@ -810,6 +933,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateHistoryUi()
         updateZoomUi()
         updateVisualToolbar()
+        updateTimingToolbar()
         applyCanvasPreviewLayout()
         audioClips = sanitizeAudioClips(audioClips)
         if (selectedAudioClipId != null && audioClips.none { it.id == selectedAudioClipId }) selectedAudioClipId = audioClips.firstOrNull()?.id
@@ -855,8 +979,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.duplicateButton.alpha = if (selected != null) 1f else 0.42f
         binding.replaceButton.isEnabled = selected != null
         binding.replaceButton.alpha = if (selected != null) 1f else 0.42f
-        binding.extractAudioButton.isEnabled = selected != null
-        binding.extractAudioButton.alpha = if (selected != null) 1f else 0.42f
+        val canExtractAudio = selected != null && selected.timing.mode == ClipPlaybackMode.FORWARD && kotlin.math.abs(selected.timing.speed - 1f) < 0.001f
+        binding.extractAudioButton.isEnabled = canExtractAudio
+        binding.extractAudioButton.alpha = if (canExtractAudio) 1f else 0.42f
 
         if (selected == null) {
             binding.selectionLabel.text = "No clip selected"
@@ -866,10 +991,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             val source = asset?.displayName?.substringBeforeLast('.')?.take(18).orEmpty()
             val transform = selected.transform
             val visual = "${(transform.scale * 100f).roundToInt()}% · ${transform.rotationDegrees.roundToInt()}° · ${(transform.opacity * 100f).roundToInt()}%"
+            val timing = when (selected.timing.mode) {
+                ClipPlaybackMode.FREEZE -> "Freeze ${formatDuration(selected.durationMs)}"
+                ClipPlaybackMode.REVERSE -> "Reverse ${formatSpeed(selected.timing.speed)}"
+                ClipPlaybackMode.FORWARD -> formatSpeed(selected.timing.speed)
+            }
             binding.selectionLabel.text = if (source.isBlank()) {
-                "Clip $number · ${formatDuration(selected.durationMs)} · $visual"
+                "Clip $number · $timing · $visual"
             } else {
-                "Clip $number · $source · $visual"
+                "Clip $number · $source · $timing · $visual"
             }
         }
     }
@@ -1048,6 +1178,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun extractAudioFromSelectedVideo() {
         val videoClip = clips.firstOrNull { it.id == selectedClipId } ?: return
+        if (videoClip.timing.mode != ClipPlaybackMode.FORWARD || kotlin.math.abs(videoClip.timing.speed - 1f) >= 0.001f) return
         val sourceAsset = assetFor(videoClip) ?: return
         val before = snapshot()
         val existingAsset = audioAssets.firstOrNull { it.uri == sourceAsset.uri }
@@ -1284,6 +1415,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         return "%02d:%02d".format(minutes, seconds)
     }
 
+    private fun formatSpeed(speed: Float): String = if (kotlin.math.abs(speed - speed.toInt()) < 0.001f) {
+        "${speed.toInt()}.0×"
+    } else {
+        String.format("%.2f×", speed).trimEnd('0')
+    }
+
     private fun formatFps(fps: Float): String {
         val rounded = fps.roundToInt()
         return if (kotlin.math.abs(fps - rounded) < 0.05f) rounded.toString() else String.format("%.2f", fps)
@@ -1301,5 +1438,6 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val HISTORY_LIMIT = 40
         private const val POSITION_STEP = 0.08f
         private const val CROP_STEP = 0.05f
+        private val SPEED_PRESETS = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
     }
 }

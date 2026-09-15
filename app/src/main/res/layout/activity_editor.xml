@@ -164,6 +164,13 @@
             android:layout_marginTop="4dp"
             android:contentDescription="Visual transform controls" />
 
+        <com.vedito.app.feature.editor.timing.TimingToolbarView
+            android:id="@+id/timingToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Speed, freeze and reverse controls" />
+
         <com.vedito.app.feature.editor.timeline.TimelineScrubberView
             android:id="@+id/timeline"
             android:layout_width="match_parent"

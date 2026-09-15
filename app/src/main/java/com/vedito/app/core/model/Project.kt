@@ -1,5 +1,7 @@
 package com.vedito.app.core.model
 
+import kotlin.math.roundToInt
+
 enum class ClipFitMode {
     FIT,
     FILL
@@ -19,6 +21,31 @@ data class ClipTransform(
     val cropBottom: Float = 0f,
     val fitMode: ClipFitMode = ClipFitMode.FIT
 )
+
+enum class ClipPlaybackMode {
+    FORWARD,
+    REVERSE,
+    FREEZE
+}
+
+/**
+ * Renderer-independent timing state. The future speed-curve engine should extend
+ * this model rather than placing timing logic inside UI/player code.
+ */
+data class ClipTiming(
+    val speed: Float = 1f,
+    val mode: ClipPlaybackMode = ClipPlaybackMode.FORWARD,
+    val freezeSourceMs: Int = 0,
+    val freezeDurationMs: Int = DEFAULT_FREEZE_DURATION_MS
+) {
+    companion object {
+        const val MIN_SPEED = 0.5f
+        const val MAX_SPEED = 2.0f
+        const val DEFAULT_FREEZE_DURATION_MS = 2_000
+        const val MIN_FREEZE_DURATION_MS = 250
+        const val MAX_FREEZE_DURATION_MS = 10_000
+    }
+}
 
 enum class CanvasAspect(val label: String, val widthUnits: Int, val heightUnits: Int) {
     SOURCE("Source", 0, 0),
@@ -65,10 +92,22 @@ data class Clip(
     val assetId: String,
     val sourceStartMs: Int,
     val sourceEndMs: Int,
-    val transform: ClipTransform = ClipTransform()
+    val transform: ClipTransform = ClipTransform(),
+    val timing: ClipTiming = ClipTiming()
 ) {
-    val durationMs: Int
+    val sourceDurationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)
+
+    val durationMs: Int
+        get() = when (timing.mode) {
+            ClipPlaybackMode.FREEZE -> timing.freezeDurationMs
+                .coerceIn(ClipTiming.MIN_FREEZE_DURATION_MS, ClipTiming.MAX_FREEZE_DURATION_MS)
+            ClipPlaybackMode.FORWARD,
+            ClipPlaybackMode.REVERSE -> {
+                val speed = timing.speed.coerceIn(ClipTiming.MIN_SPEED, ClipTiming.MAX_SPEED)
+                (sourceDurationMs / speed).roundToInt().coerceAtLeast(1)
+            }
+        }
 }
 
 data class AudioAsset(
