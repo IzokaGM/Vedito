@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.20.0 / versionCode 20**
+- Current patch: **0.21.0 / versionCode 21**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -88,8 +88,10 @@ Important modules:
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 - `core/export/ExportPlan.kt` / `ExportSupport.kt` — Android-free export sizing/capability contract.
 - `core/export/AudioMixPlan.kt` — renderer-independent source-video/audio-track timing, volume, mute and fade contract for preview/export parity.
-- `feature/export/SoftwareFrameComposer.kt` — deterministic off-screen software fallback consuming canonical project/composition state.
-- `feature/export/CodecInputSurface.kt` — EGL/GLES blit bridge into the video encoder input Surface.
+- `core/export/RenderPerformancePlan.kt` — Android-free streaming/random frame-access policy plus bounded GPU post-process plan.
+- `feature/export/StreamingVideoFrameDecoder.kt` / `VideoFrameSourcePool.kt` — bounded MediaCodec streaming frame acquisition with automatic random-access fallback.
+- `feature/export/SoftwareFrameComposer.kt` — hybrid base/overlay plane compositor consuming canonical project/composition state.
+- `feature/export/CodecInputSurface.kt` — EGL/GLES post-effect + overlay compositor directly on the video encoder input Surface.
 - `feature/export/PcmMediaDecoder.kt` / `OfflineAudioMixer.kt` — export audio decode, normalized PCM cache, overlap mixing and forward-speed time-stretch foundation.
 - `feature/export/VideoExportEngine.kt` / `Mp4MuxSink.kt` — H.264/AAC MediaCodec + MediaMuxer export pipeline, progress/cancel/error lifecycle.
 
@@ -113,6 +115,7 @@ Important modules:
 - Patch 18: renderer-independent per-clip color grade state, deterministic color-matrix math, API 31+ hardware color preview, chroma+color RenderEffect chaining, and Android-free `FrameCompositionBuilder` for preview/export convergence; schema v18 persistence.
 - Patch 19: first real off-screen MP4 export foundation. H.264 video is encoded from a deterministic composed frame pipeline that reuses timing/keyframe/stabilization/mask/chroma/color/effect/transition plus overlay/text/caption project state. 720p/1080p @ 30fps presets, AAC container track, progress/cancel/error handling and SAF save flow are integrated.
 - Major Patch 20: real audible export mixer. Main-video source sound plus independent audio tracks now render to stereo AAC with timeline sync, volume/mute/fades, multi-track overlap and lightweight pitch-preserving forward-speed handling. Export cancellation/mux/encoder lifecycle is hardened.
+- Patch 21: bounded MediaCodec streaming decode for forward/freeze main video and video overlays with random-access fallback, reusable frame/texture storage, hybrid base/overlay composition, and encoder-surface GLES post effects/transitions.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -132,7 +135,7 @@ Important modules:
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Production-grade GPU decoder/compositor performance and export recovery/resume. Patch 20 now provides audible source/audio-track mixing; the software frame backend remains the major throughput bottleneck.
+- Full source-texture GPU composition, production reverse decoder/cache and export recovery/resume. Patch 21 now provides streaming forward/freeze decode + hybrid GPU post processing.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -157,20 +160,27 @@ Important modules:
 - Patch 19 audio was intentionally silent and is superseded by Major Patch 20.
 
 ## Major Patch 20 behavior/limits
-- `AudioMixPlan`/`AudioMixMath` are now canonical for export audio ownership, timeline position, volume, mute and fades.
-- Main forward-video source sound and independent audio clips are decoded to seekable stereo PCM and mixed before AAC encoding.
-- Multiple audio clips can overlap. Audio-track volume, mute, fade-in and fade-out are honored.
-- Reverse/freeze source sound remains muted to match `PreviewPlayer`; overlay-video sound remains muted.
-- Forward speed-changed source audio uses a lightweight two-grain overlap-add stretcher for timeline sync with reduced pitch shift. It is not a studio-grade time-stretch algorithm.
-- Audio decoding/mixing is cancellation-aware. Export adds destination truncation fallback, encoder input stall guards, bounded pre-mux buffering, monotonic per-track PTS and partial-file cleanup.
-- Project persistence schema stays v18 because Major Patch 20 adds no new saved project fields.
-- Frame acquisition still uses `MediaMetadataRetriever` and software composition. This is the next major performance target.
+- `AudioMixPlan`/`AudioMixMath` are canonical for export audio ownership, timeline position, volume, mute and fades.
+- Main forward-video source sound and independent audio clips decode to seekable stereo PCM and mix before AAC encoding.
+- Reverse/freeze source sound remains muted to match preview; overlay-video sound remains muted.
+- Forward speed-changed source audio uses a lightweight overlap-add stretcher; it is not a studio-grade time-stretch algorithm.
+- Audio decode/mix is cancellation-aware with bounded mux startup, monotonic PTS and partial-file cleanup.
+
+## Patch 21 behavior/limits
+- `FrameAccessPlanner` is the Android-free execution policy: FORWARD → streaming, FREEZE → held streaming frame, REVERSE → random-access fallback.
+- `StreamingVideoFrameDecoder` uses `MediaExtractor + MediaCodec + ImageReader` and reuses one decoded RGB bitmap per stream.
+- `VideoFrameSourcePool` limits active hardware stream decoders and automatically falls back to `MediaMetadataRetriever` when a device cannot negotiate the streaming surface.
+- `SoftwareFrameComposer` produces reusable base/overlay planes. Supported post effects/transitions are deferred to `CodecInputSurface` and composited in GLES on the encoder surface.
+- Warm/Cool/Dream/Vignette + Fade/Flash/Wipe are GPU eligible; Grain intentionally remains CPU fallback in this patch.
+- Existing mask/overlay/text/caption ordering is preserved by keeping those elements on the post-effect overlay plane.
+- Project persistence schema stays v18; Patch 21 adds execution infrastructure only.
+- Chroma/color base processing is still CPU-backed, reverse video remains random-access, and streaming decoder surface support remains device-dependent with automatic fallback.
 
 ## Next milestone
-**Patch 21 — Production Decoder / GPU Compositor Performance Foundation**
-- replace frame-by-frame `MediaMetadataRetriever` extraction with a streaming decode path,
-- move more composition work to GPU/off-screen surfaces,
-- improve long-project memory/thermal/export throughput,
-- preserve the exact `FrameCompositionBuilder` + `AudioMixPlan` ownership contracts.
+**Patch 22 — High-Resolution / Codec Controls & Export Preflight Foundation**
+- capability-driven H.265/2K/4K where the device supports it,
+- user-facing FPS/bitrate controls with safe presets,
+- memory/thermal/storage preflight before long exports,
+- preserve the existing `FrameCompositionBuilder` + `AudioMixPlan` + Patch 21 execution contracts.
 
 See `WORKPLAN.md` for the full roadmap.

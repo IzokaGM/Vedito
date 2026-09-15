@@ -1,42 +1,49 @@
-# Vedito Major Patch 20 — Real Audio Mix / Export Parity / Reliability
+# Vedito Patch 21 — Production Decoder / GPU Compositor Performance Foundation
 
-Version: **0.20.0** (`versionCode 20`)  
+Version: **0.21.0** (`versionCode 21`)  
 Package: **`com.vedito.app`**  
-Project persistence schema: **v18** (unchanged; Patch 20 adds no saved fields)
+Project persistence schema: **v18** (unchanged; Patch 21 adds no saved project fields)
 
-## Major Patch 20
-This is the larger combined audio/export milestone after Patch 19. It turns the previously silent AAC foundation into a real audible export path while keeping the existing editor model intact.
+## Patch 21
+Patch 21 replaces the expensive frame-by-frame export extraction path for normal forward playback with a bounded streaming decode pipeline and moves supported timed post-processing onto the encoder GPU surface.
 
-### Real export audio
-- Main-video source audio is decoded and mixed into the MP4.
-- Independent Vedito audio clips are decoded and mixed on their timeline positions.
-- Audio-track **volume / mute / fade-in / fade-out** are honored during export.
-- Multiple overlapping audio clips are mixed to stereo before AAC encoding.
-- Reverse/freeze main-video source sound stays muted, matching the current preview policy.
-- Speed-changed forward source audio uses a lightweight overlap-add time stretcher to keep timeline sync and reduce pitch shift.
-- Overlay-video audio remains intentionally muted, matching current preview ownership.
+### Streaming video decode
+- New `StreamingVideoFrameDecoder` uses `MediaExtractor + MediaCodec` with a bounded `ImageReader` surface.
+- Normal forward main clips and video overlays prefer sequential hardware decode.
+- Freeze clips reuse the held decoded frame instead of extracting it again for every output frame.
+- Reverse clips intentionally use the correctness-first random-access fallback until a dedicated reverse frame cache/decoder lands.
+- Unsupported decoder/surface combinations automatically fall back to `MediaMetadataRetriever` rather than aborting the export.
+- Decoder pool is LRU-bounded to avoid pinning an unbounded number of hardware decoders in long/multi-overlay projects.
+- Decoded YUV frames reuse one RGB bitmap per active stream, reducing frame-allocation churn.
 
-### Export parity + reliability
-- New Android-free `AudioMixPlan` owns audio layer timing/gain rules rather than UI code.
-- `PcmMediaDecoder` decodes supported Android media audio streams to seekable normalized PCM.
-- `OfflineAudioMixer` renders deterministic stereo chunks for the AAC encoder.
-- Video + audio encoding now progress together instead of adding a silent AAC track after video.
-- Safer destination truncation, bounded encoder/mux startup buffering, monotonic PTS normalization, cancellation checks through audio decode/mix, encoder stall guards and partial-output cleanup.
-- Existing visual export path remains unchanged: timing/keyframes/stabilization/mask/chroma/color/effects/transitions/overlay/text/captions still use the canonical composition state.
+### Hybrid GPU compositor
+- `SoftwareFrameComposer` now emits reusable **base + overlay planes** instead of one repeatedly allocated final frame.
+- Warm/Cool/Dream/Vignette timed effects and Fade/Flash/Wipe transitions can run in the encoder EGL/GLES shader.
+- Grain stays on the CPU fallback in Patch 21 to preserve the existing sparse-grain look.
+- Mask occlusion, overlay media, text and captions remain above the post-processed base plane, preserving the existing visual layer order.
+- `CodecInputSurface` keeps GL texture storage alive and uses sub-image uploads after the first frame instead of reallocating texture storage every frame.
+- The final overlay plane is alpha-composited in GLES immediately before the H.264 encoder surface swap.
+
+### Ownership / compatibility
+- `FrameCompositionBuilder` remains the canonical visual state resolver.
+- `AudioMixPlan` / `OfflineAudioMixer` remain the canonical Patch 20 audio path.
+- No duplicate preview/export project state was added.
+- Project schema stays **v18**.
 
 ## Current limits
-- The frame compositor still uses correctness-first `MediaMetadataRetriever` + software Canvas before the GLES/H.264 encoder surface. Long/high-resolution projects still need the future production decoder/GPU compositor.
-- The lightweight speed-audio time stretcher prioritizes sync and practical mobile cost; extreme speed edits can sound less clean than a dedicated studio-grade algorithm.
-- H.265, 2K/4K, user FPS/bitrate controls, recovery/resume and thermal/storage preflight remain future work.
+- Chroma-key pixel removal and base color matrix are still CPU-backed in the export compositor; a future full source-texture GPU graph can move these stages without changing the project model.
+- Reverse video still uses random-access extraction and can be slower on long/high-resolution clips.
+- MediaCodec → YUV ImageReader support varies by device; Vedito falls back automatically when the streaming surface cannot be negotiated.
+- H.265, 2K/4K, custom FPS/bitrate, export resume/recovery and full thermal/storage preflight remain future work.
 
 ## Acceptance path
-1. Import a video that has audible source sound.
-2. Add one or more audio clips; change volume, mute and fades.
-3. Export 720p first, then 1080p.
-4. Verify source-video sound and audio tracks are audible and synchronized.
-5. Verify muted/faded audio behaves like preview.
-6. Test a speed-changed forward clip and confirm audio stays aligned to the clip duration.
-7. Cancel an export during audio preparation and during frame rendering; confirm no broken partial MP4 remains.
-8. Reopen the saved project and confirm existing Patch 1–19 state is intact.
+1. Export a normal forward project at 720p and 1080p; verify image + audio sync.
+2. Test a 0.5× and 2× forward clip; verify repeated/skipped source frames remain visually aligned.
+3. Add a freeze clip; verify the held frame remains stable.
+4. Add a reverse clip; verify correctness even though that section can export slower.
+5. Add Warm/Cool/Dream/Vignette effects and Fade/Flash/Wipe transitions; compare preview/export behavior.
+6. Add overlays, text/captions and a mask; verify they remain above the base effect layer.
+7. Cancel during a long export; verify no broken partial MP4 remains.
+8. Reopen the project; verify Patch 1–20 state is intact.
 
 No workflow `.yml/.yaml` files are included in this patch ZIP.

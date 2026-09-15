@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /**
- * Patch 20 major export pipeline.
- * Video and audible mixed PCM are rendered deterministically on one worker and muxed into MP4.
+ * Patch 21 production export pipeline.
+ * Video uses bounded streaming decode plus a hybrid CPU/GPU compositor; mixed PCM remains deterministic.
  */
 class VideoExportEngine(
     context: Context
@@ -131,7 +131,7 @@ class VideoExportEngine(
             }
             audioCodec = activeAudioCodec
 
-            val frameComposer = SoftwareFrameComposer(appContext, project, plan)
+            val frameComposer = SoftwareFrameComposer(appContext, project, plan) { checkCancelled() }
             composer = frameComposer
             val totalAudioSamples = ((plan.durationUs * plan.audioSampleRate) / 1_000_000L).coerceAtLeast(1L)
 
@@ -148,7 +148,7 @@ class VideoExportEngine(
             }
             drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false)
 
-            val firstFrame = frameComposer.compose(0)
+            val firstFrame = frameComposer.composeHybrid(0)
             activeCodecSurface.draw(firstFrame, 0L)
             drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
 
@@ -166,8 +166,8 @@ class VideoExportEngine(
                 val positionMs = ((frameIndex.toLong() * 1_000L) / plan.frameRate)
                     .coerceAtMost((plan.durationMs - 1).coerceAtLeast(0).toLong())
                     .toInt()
-                val bitmap = frameComposer.compose(positionMs)
-                activeCodecSurface.draw(bitmap, frameIndex.toLong() * frameDurationNs)
+                val frame = frameComposer.composeHybrid(positionMs)
+                activeCodecSurface.draw(frame, frameIndex.toLong() * frameDurationNs)
                 drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
 
                 val targetAudioSamples = min(
@@ -186,7 +186,8 @@ class VideoExportEngine(
                 val percent = (10L + (frameIndex + 1L) * 78L / plan.frameCount.coerceAtLeast(1))
                     .toInt().coerceIn(11, 88)
                 if (frameIndex % PROGRESS_FRAME_INTERVAL == 0 || frameIndex == plan.frameCount - 1) {
-                    postProgress(listener, percent, "Rendering video + audio ${frameIndex + 1}/${plan.frameCount}")
+                    val decode = frameComposer.performanceSnapshot().shortLabel()
+                    postProgress(listener, percent, "Rendering ${frameIndex + 1}/${plan.frameCount} · $decode · GPU post")
                 }
             }
 

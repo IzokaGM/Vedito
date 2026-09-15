@@ -4,18 +4,16 @@ Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.20.0 / versionCode 20 / project schema v18**.
+- Current patch: **0.21.0 / versionCode 21 / project schema v18**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
 - New patch requires owner confirmation unless owner already explicitly said to start.
 
-Major Patch 20 replaces Patch 19's silent AAC foundation with a real deterministic audio renderer. `AudioMixPlanner` owns renderer-independent source-video/audio-track timing and gain rules. `PcmMediaDecoder` converts supported Android audio streams to seekable normalized stereo PCM. `OfflineAudioMixer` mixes main-video source sound plus independent audio clips with volume/mute/fades and lightweight overlap-add handling for forward speed changes. `VideoExportEngine` feeds mixed PCM to AAC while video frames are being rendered, then muxes both tracks through the hardened `Mp4MuxSink`.
+Patch 21 changes export execution, not project ownership. `FrameAccessPlanner` selects STREAMING/HOLD/RANDOM access. `StreamingVideoFrameDecoder` + `VideoFrameSourcePool` prefer bounded `MediaExtractor + MediaCodec + ImageReader` decode for forward/freeze main video and overlay video, with automatic `MediaMetadataRetriever` fallback and an LRU cap on active stream decoders. Reverse remains random-access for correctness.
 
-Preview/export ownership rules now intentionally match: main forward clips own their source sound, reverse/freeze source sound is muted, independent audio tracks can overlap and honor volume/mute/fades, and overlay-video sound stays muted. Do not add a second audio timing model in UI/export code; extend `AudioMixPlan`/`AudioMixMath`.
+`SoftwareFrameComposer` now emits reusable base/overlay planes. `GpuPostProcessPlanner` routes supported Warm/Cool/Dream/Vignette effects and Fade/Flash/Wipe transitions to `CodecInputSurface`; Grain remains CPU fallback. `CodecInputSurface` reuses texture storage and performs GPU post-processing + final overlay alpha composition directly on the H.264 encoder surface.
 
-Critical visual architecture rule remains: do not bypass `ClipTimeMap`, `FrameCompositionBuilder`, `OverlayComposition`, `TextComposition`, `CaptionComposition`, shared color/keyframe/tracking models or the existing project state when improving export. Replace the software frame backend later, not the project-state math.
+Do not bypass `ClipTimeMap`, `FrameCompositionBuilder`, `OverlayComposition`, `TextComposition`, `CaptionComposition`, `AudioMixPlan`, shared color/keyframe/tracking models or persisted project state when extending export. Patch 21 intentionally keeps schema v18.
 
-Current major remaining export bottleneck is frame decode/composition throughput: `MediaMetadataRetriever` + software Canvas is correctness-first and not the final long-project GPU path.
-
-Next planned milestone: **Patch 21 — Production Decoder / GPU Compositor Performance Foundation** unless device/CI testing exposes a Patch 20 regression first.
+Next planned milestone: **Patch 22 — High-Resolution / Codec Controls & Export Preflight Foundation** unless CI/device testing exposes a Patch 21 regression first.

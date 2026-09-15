@@ -92,14 +92,14 @@ Completed:
 - Persistence + undo/redo.
 
 Pending:
-- Production GPU shader stack, LUT/HSL/curves/wheels. Basic exposure/contrast/saturation/temperature/tint/fade now exist per clip.
+- Full production GPU shader stack for source transforms/chroma/color plus LUT/HSL/curves/wheels. Patch 21 moves supported timed post effects/transitions to export GLES.
 - Dual-source cross-dissolve and richer transition library.
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Major Patch 20 closes the real-audio/export-parity foundation.**
-Completed through Major Patch 20:
-- Deterministic off-screen software fallback compositor consuming canonical project state.
+**In progress — Patch 21 adds the production streaming-decoder / hybrid GPU export foundation.**
+Completed through Patch 21:
+- Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p @ 30fps presets + hardware surface video encoding.
 - Shared visual timing parity for trim/speed/reverse/freeze.
@@ -108,9 +108,12 @@ Completed through Major Patch 20:
 - Audio-track volume/mute/fade parity.
 - Forward speed-audio overlap-add stretch foundation; reverse/freeze source audio follows current muted preview policy.
 - Progress/cancel/error handling, cancellation-aware audio decoding, bounded mux startup, PTS hardening and partial-file cleanup.
+- Forward/freeze MediaCodec streaming video decode with bounded decoder pool + automatic random-access fallback.
+- Encoder-surface GLES post processing for supported effects/transitions plus final overlay alpha composition.
+- Reused decoded bitmaps and GL texture storage to reduce per-frame allocation churn.
 
 Pending:
-- Production streaming decoder/GPU compositor replacing MediaMetadataRetriever/software fallback.
+- Full source-texture GPU graph for chroma/color/transform/masks and production reverse decode/cache.
 - H.265, 2K/4K where supported, FPS/bitrate controls.
 - Recovery/resume, thermal/memory/storage preflight and long-project optimization.
 - Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
@@ -195,14 +198,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Real 720p/1080p H.264 + AAC MP4 save path.
   - Correctness-first off-screen software compositor using canonical timing/render state.
   - EGL/GLES encoder-surface bridge, progress/cancel/error handling and partial-file cleanup.
-- **Major Patch 20:** Real Audio Mixer / Export Parity / Reliability — current patch.
+- **Major Patch 20:** Real Audio Mixer / Export Parity / Reliability — locked after CI/device verification.
   - Main-video source audio + independent overlapping audio clips render into stereo AAC.
   - Volume/mute/fade export parity plus forward speed-audio overlap-add handling.
   - Android-free audio mix plan, seekable normalized PCM decode cache and deterministic offline mixer.
   - Cancellation-aware audio prep, bounded mux startup, monotonic PTS and encoder stall hardening.
   - Project schema remains v18; no duplicate saved audio state introduced.
-- **Patch 21:** Production Decoder / GPU Compositor Performance Foundation — next.
-- **Patch 22+:** H.265/4K, advanced color/audio/text, AI/templates/cloud and release hardening.
+- **Patch 21:** Production Decoder / GPU Compositor Performance Foundation — current patch.
+  - Forward/freeze main video + video overlays prefer bounded MediaCodec streaming decode.
+  - Reverse/unsupported decoder paths retain correctness-first random-access fallback.
+  - LRU decoder pool + reusable decoded/output bitmaps reduce long-project allocation pressure.
+  - Hybrid base/overlay export planes move supported timed effects/transitions + final alpha composition onto the encoder GLES surface.
+  - GL texture storage is reused across frames; schema remains v18.
+- **Patch 22:** High-Resolution / Codec Controls & Export Preflight Foundation — next.
+- **Patch 23+:** advanced color/audio/text, production reverse/GPU graph, AI/templates/cloud and release hardening.
 
 ## Release gates
 Before locking a major stage:

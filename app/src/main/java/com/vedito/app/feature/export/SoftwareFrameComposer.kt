@@ -11,12 +11,12 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.text.Layout
@@ -28,6 +28,9 @@ import com.vedito.app.core.color.ColorGradeEngine
 import com.vedito.app.core.compositor.FrameCompositionBuilder
 import com.vedito.app.core.effect.EffectComposition
 import com.vedito.app.core.export.ExportPlan
+import com.vedito.app.core.export.FrameAccessMode
+import com.vedito.app.core.export.FrameAccessPlanner
+import com.vedito.app.core.export.GpuPostProcessPlanner
 import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
@@ -56,35 +59,54 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Deterministic Android software fallback compositor for Patch 19 exports.
- * It consumes the same renderer-independent project/composition state as preview.
- * The future GPU compositor can replace this implementation without changing project state.
+ * Patch 21 hybrid export compositor. CPU handles canonical source/color/chroma/mask/text layers,
+ * while supported timed post effects/transitions are deferred to the encoder EGL/GLES surface.
+ * It still consumes the same renderer-independent project/composition state as preview.
  */
 class SoftwareFrameComposer(
     private val context: Context,
     private val project: Project,
-    private val plan: ExportPlan
+    private val plan: ExportPlan,
+    cancelCheck: () -> Unit = {}
 ) : Closeable {
-    private val videoRetrievers = linkedMapOf<String, MediaMetadataRetriever>()
-    private val overlayVideoRetrievers = linkedMapOf<String, MediaMetadataRetriever>()
+    private val framePool = VideoFrameSourcePool(context, plan, cancelCheck)
     private val imageCache = linkedMapOf<String, Bitmap>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val effectPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
-    private val outputBitmap = Bitmap.createBitmap(plan.width, plan.height, Bitmap.Config.ARGB_8888)
-    private val outputCanvas = Canvas(outputBitmap)
+    private val baseBitmap = Bitmap.createBitmap(plan.width, plan.height, Bitmap.Config.ARGB_8888)
+    private val baseCanvas = Canvas(baseBitmap)
+    private val overlayBitmap = Bitmap.createBitmap(plan.width, plan.height, Bitmap.Config.ARGB_8888)
+    private val overlayCanvas = Canvas(overlayBitmap)
     private val dpScale = plan.width / 360f
 
-    fun compose(timelinePositionMs: Int): Bitmap {
+    /**
+     * Composes reusable base/overlay planes. Timed effects/transitions are moved to the encoder GPU
+     * when the effect stack is supported; unsupported stacks are rendered on the CPU before return.
+     */
+    fun composeHybrid(timelinePositionMs: Int): HybridComposedFrame {
         val position = timelinePositionMs.coerceIn(0, plan.durationMs.coerceAtLeast(0))
-        outputCanvas.drawColor(project.canvasSettings.background.argb)
+        baseCanvas.drawColor(project.canvasSettings.background.argb)
+        overlayCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
         val frame = FrameCompositionBuilder.build(project.clips, project.effectClips, position)
+        var gpuPlan = if (frame != null) {
+            GpuPostProcessPlanner.plan(frame.activeEffects, frame.transition)
+        } else {
+            com.vedito.app.core.export.GpuPostProcessPlan.NEUTRAL
+        }
+
         if (frame != null) {
             val clip = project.clips.getOrNull(frame.clipIndex)
             val asset = clip?.let { project.asset(it.assetId) }
             if (clip != null && asset != null) {
-                decodeVideoFrame(asset, frame.sourcePositionMs)?.let { bitmap ->
+                val lease = decodeVideoFrame(
+                    asset = asset,
+                    sourcePositionMs = frame.sourcePositionMs,
+                    accessMode = FrameAccessPlanner.forPlaybackMode(clip.timing.mode)
+                )
+                lease?.let { decoded ->
+                    val bitmap = decoded.bitmap
                     val processed = if (frame.chromaKey.enabled) applyChroma(bitmap, frame.chromaKey) else bitmap
                     val framePaint = Paint(paint).apply {
                         alpha = (frame.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
@@ -92,56 +114,75 @@ class SoftwareFrameComposer(
                             colorFilter = ColorMatrixColorFilter(ColorMatrix(ColorGradeEngine.colorMatrix(frame.colorGrade)))
                         }
                     }
-                    drawVisualBitmap(outputCanvas, processed, frame.transform, framePaint, 0.42f)
+                    drawVisualBitmap(baseCanvas, processed, frame.transform, framePaint, 0.42f)
                     if (processed !== bitmap) processed.recycle()
-                    bitmap.recycle()
+                    if (decoded.recycleAfterUse && !bitmap.isRecycled) bitmap.recycle()
                 }
 
-                drawEffects(outputCanvas, frame.activeEffects, frame.transition, position)
-                drawMaskOcclusion(outputCanvas, frame.mask, project.canvasSettings.background.argb)
+                if (!gpuPlan.gpuEligible) {
+                    drawEffects(baseCanvas, frame.activeEffects, frame.transition, position)
+                    gpuPlan = com.vedito.app.core.export.GpuPostProcessPlan.NEUTRAL
+                }
+                // Keep Patch 19/20 visual ordering: mask occlusion sits after effect/transition and before overlays.
+                drawMaskOcclusion(overlayCanvas, frame.mask, project.canvasSettings.background.argb)
             }
         }
 
         OverlayComposition.activeLayers(position, project.overlayAssets, project.overlayClips).forEach { layer ->
-            val bitmap = when (layer.asset.type) {
-                OverlayMediaType.IMAGE -> decodeOverlayImage(layer.asset)
+            val lease = when (layer.asset.type) {
+                OverlayMediaType.IMAGE -> decodeOverlayImage(layer.asset)?.let { VideoFrameSourcePool.FrameLease(it, false) }
                 OverlayMediaType.VIDEO -> decodeOverlayVideoFrame(layer.asset, layer.sourcePositionMs)
             } ?: return@forEach
             val layerPaint = Paint(paint).apply {
                 alpha = (layer.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
             }
-            drawVisualBitmap(outputCanvas, bitmap, layer.transform, layerPaint, 0.5f)
-            if (layer.asset.type == OverlayMediaType.VIDEO) bitmap.recycle()
+            drawVisualBitmap(overlayCanvas, lease.bitmap, layer.transform, layerPaint, 0.5f)
+            if (lease.recycleAfterUse && !lease.bitmap.isRecycled) lease.bitmap.recycle()
         }
 
         TextComposition.activeLayers(position, project.textClips).forEach { layer ->
-            drawTextClip(outputCanvas, layer.clip, layer.localTimelineMs)
+            drawTextClip(overlayCanvas, layer.clip, layer.localTimelineMs)
         }
         CaptionComposition.activeLayers(position, project.captionSegments).forEachIndexed { index, layer ->
-            drawCaption(outputCanvas, layer.segment, layer.localTimelineMs, index)
+            drawCaption(overlayCanvas, layer.segment, layer.localTimelineMs, index)
         }
-        return outputBitmap
+        return HybridComposedFrame(baseBitmap, overlayBitmap, gpuPlan)
     }
+
+    fun performanceSnapshot(): VideoFrameSourcePool.Snapshot = framePool.snapshot()
 
     override fun close() {
-        videoRetrievers.values.forEach { runCatching { it.release() } }
-        overlayVideoRetrievers.values.forEach { runCatching { it.release() } }
+        runCatching { framePool.close() }
         imageCache.values.forEach { if (!it.isRecycled) it.recycle() }
-        videoRetrievers.clear()
-        overlayVideoRetrievers.clear()
         imageCache.clear()
-        if (!outputBitmap.isRecycled) outputBitmap.recycle()
+        if (!baseBitmap.isRecycled) baseBitmap.recycle()
+        if (!overlayBitmap.isRecycled) overlayBitmap.recycle()
     }
 
-    private fun decodeVideoFrame(asset: MediaAsset, sourcePositionMs: Int): Bitmap? {
-        val retriever = videoRetrievers.getOrPut(asset.id) { newRetriever(asset.uri) ?: return null }
-        return decodeFrame(retriever, sourcePositionMs, asset.width, asset.height)
-    }
+    private fun decodeVideoFrame(
+        asset: MediaAsset,
+        sourcePositionMs: Int,
+        accessMode: FrameAccessMode
+    ): VideoFrameSourcePool.FrameLease? = framePool.frame(
+        key = "main:${asset.id}",
+        uriString = asset.uri,
+        sourcePositionMs = sourcePositionMs,
+        sourceWidth = asset.width,
+        sourceHeight = asset.height,
+        nominalFrameRate = asset.frameRate,
+        mode = accessMode
+    )
 
-    private fun decodeOverlayVideoFrame(asset: OverlayAsset, sourcePositionMs: Int): Bitmap? {
-        val retriever = overlayVideoRetrievers.getOrPut(asset.id) { newRetriever(asset.uri) ?: return null }
-        return decodeFrame(retriever, sourcePositionMs, asset.width, asset.height)
-    }
+    private fun decodeOverlayVideoFrame(asset: OverlayAsset, sourcePositionMs: Int): VideoFrameSourcePool.FrameLease? =
+        framePool.frame(
+            key = "overlay:${asset.id}",
+            uriString = asset.uri,
+            sourcePositionMs = sourcePositionMs,
+            sourceWidth = asset.width,
+            sourceHeight = asset.height,
+            nominalFrameRate = 30f,
+            mode = FrameAccessMode.STREAMING
+        )
 
     private fun decodeOverlayImage(asset: OverlayAsset): Bitmap? = imageCache[asset.id] ?: run {
         val decoded = runCatching {
@@ -153,42 +194,8 @@ class SoftwareFrameComposer(
         scaled
     }
 
-    private fun newRetriever(uriString: String): MediaMetadataRetriever? = runCatching {
-        MediaMetadataRetriever().apply { setDataSource(context, Uri.parse(uriString)) }
-    }.getOrNull()
-
-    private fun decodeFrame(
-        retriever: MediaMetadataRetriever,
-        sourcePositionMs: Int,
-        sourceWidth: Int,
-        sourceHeight: Int
-    ): Bitmap? {
-        val timeUs = sourcePositionMs.coerceAtLeast(0).toLong() * 1_000L
-        return runCatching {
-            if (Build.VERSION.SDK_INT >= 27 && sourceWidth > 0 && sourceHeight > 0) {
-                val target = decodeTarget(sourceWidth, sourceHeight)
-                retriever.getScaledFrameAtTime(
-                    timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST,
-                    target.first,
-                    target.second
-                )
-            } else {
-                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-            }
-        }.getOrNull()
-    }
-
-    private fun decodeTarget(sourceWidth: Int, sourceHeight: Int): Pair<Int, Int> {
-        val maxW = (plan.width * 1.5f).roundToInt().coerceAtMost(2_560)
-        val maxH = (plan.height * 1.5f).roundToInt().coerceAtMost(2_560)
-        val scale = minOf(1f, maxW.toFloat() / sourceWidth, maxH.toFloat() / sourceHeight)
-        return (sourceWidth * scale).roundToInt().coerceAtLeast(2) to
-            (sourceHeight * scale).roundToInt().coerceAtLeast(2)
-    }
-
     private fun scaleStaticBitmap(bitmap: Bitmap): Bitmap {
-        val target = decodeTarget(bitmap.width, bitmap.height)
+        val target = FrameAccessPlanner.decodeTarget(bitmap.width, bitmap.height, plan.width, plan.height)
         if (target.first == bitmap.width && target.second == bitmap.height) return bitmap
         return Bitmap.createScaledBitmap(bitmap, target.first, target.second, true)
     }
