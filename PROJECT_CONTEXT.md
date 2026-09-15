@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.17.0 / versionCode 17**
+- Current patch: **0.18.0 / versionCode 18**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -104,6 +104,7 @@ Important modules:
 - Patch 15: renderer-independent transform keyframes for main clips + overlays, deterministic interpolation/easing, real preview evaluation, keyframe navigation/edit controls, timeline-safe split/trim/speed handling, undo/redo and schema v15 persistence.
 - Patch 16: renderer-independent main-clip rectangle/ellipse mask state with size/position/feather/invert, real native occlusion preview, chroma-key state with tolerance/softness/spill, API 33+ RuntimeShader chroma preview, undo/redo and schema v16 persistence.
 - Patch 17: renderer-independent main-clip motion tracking anchors + stabilization state, draggable manual reticle workflow, deterministic interpolation/inverse-translation stabilization preview, trim/split/speed/reverse timing preservation, undo/redo and schema v17 persistence.
+- Patch 18: renderer-independent per-clip color grade state, deterministic color-matrix math, API 31+ hardware color preview, chroma+color RenderEffect chaining, and Android-free `FrameCompositionBuilder` for preview/export convergence; schema v18 persistence.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -134,11 +135,19 @@ Important modules:
 - Future detector assistance must populate the same tracking points; export must consume the same engine/model rather than duplicate timing math.
 - Main clips only in Patch 17. Overlay/object attachment tracking remains pending.
 
+## Patch 18 behavior/limits
+- Main clips persist `ColorGradeSpec`: exposure, contrast, saturation, temperature, tint and fade.
+- `ColorGradeEngine` is canonical for normalization and deterministic 4×5 color matrix generation. Future HSL/curves/LUT work must extend this color domain rather than create preview-only settings.
+- `PreviewPlayer` uses one RenderEffect pipeline so color and chroma can coexist; color preview is API 31+, chroma shader remains API 33+.
+- `FrameCompositionBuilder` resolves canonical frame state (source time, evaluated/stabilized transform, mask, chroma, color, timed effects, transition and ordered render stages) without Android dependencies. Future off-screen export must consume this resolved state.
+- This is compositor architecture + live color foundation, not the final off-screen GPU renderer.
+
 ## Next milestone
-**Patch 18 — Advanced Color / GPU Compositor Foundation**
-- shared GPU-oriented composition interfaces for preview/export convergence,
-- base color-adjustment state suitable for LUT/HSL/curves expansion,
-- preserve existing effects/mask/chroma/tracking ownership without preview-only duplicate state,
-- persistence + deterministic renderer data flow.
+**Patch 19 — Production Render / Export Engine Foundation**
+- deterministic off-screen render graph consuming `FrameCompositionBuilder`,
+- first real H.264/AAC MP4 export path,
+- preview/export timing parity for trims/speed/freeze/basic visual state,
+- progress/cancel/error handling foundation,
+- keep advanced HSL/curves/LUT and richer shader passes expandable without duplicating project state.
 
 See `WORKPLAN.md` for the full roadmap.

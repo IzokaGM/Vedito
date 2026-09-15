@@ -39,7 +39,7 @@ Next:
 - Later speed curves built on `ClipTimeMap`.
 
 ## Stage 3 — Pro visual editing
-**In progress — keyframes, masks/chroma and manual motion tracking/stabilization foundation completed through Patch 17.**
+**In progress — keyframes, masks/chroma, manual tracking/stabilization and advanced color foundation completed through Patch 18.**
 Completed:
 - Renderer-independent clip/overlay transform keyframes.
 - Linear/Ease In/Ease Out/Ease In-Out/Hold interpolation.
@@ -48,6 +48,8 @@ Completed:
 - Main-clip chroma-key parameter model with API 33+ RuntimeShader preview foundation.
 - Main-clip manual motion anchor model + draggable reticle workflow.
 - Deterministic tracking interpolation and translation-based stabilization preview with strength/auto-crop state.
+- Per-main-clip exposure/contrast/saturation/temperature/tint/fade with deterministic shared color math.
+- Android-free frame composition planning for transform/mask/chroma/color/effects/transition preview-export convergence.
 
 Pending:
 - Advanced keyframe graph/custom Bezier editor and broader property coverage.
@@ -55,7 +57,7 @@ Pending:
 - Production shared GPU chroma compositor + eyedropper sampling.
 - Automatic detector/optical-flow tracking and overlay attachment tracking.
 - Production stabilization and motion blur.
-- HSL/curves/wheels/LUT.
+- HSL/curves/wheels/LUT expansion on the Patch 18 color model.
 
 ## Stage 4 — Audio
 **Pro foundation completed through Patch 07; advanced audio pending.**
@@ -80,7 +82,7 @@ Completed: timed manual text layers, dedicated caption segments, SRT import/expo
 Pending: custom/downloaded font packs, advanced/keyframed text animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
-**Foundation completed in Patch 14; advanced GPU effects/color tools pending.**
+**Foundation through Patch 18; timed effects plus shared GPU-oriented color/composition state exist, advanced shader library still pending.**
 Completed:
 - Independent timed effect track + move/trim.
 - Warm/Cool/Vignette/Dream/Grain native preview effects with intensity.
@@ -89,7 +91,7 @@ Completed:
 - Persistence + undo/redo.
 
 Pending:
-- GPU shader stack, true color adjustments, LUT/HSL/curves.
+- Production GPU shader stack, LUT/HSL/curves/wheels. Basic exposure/contrast/saturation/temperature/tint/fade now exist per clip.
 - Dual-source cross-dissolve and richer transition library.
 - Effect parameter keyframes and downloadable effect packs.
 
@@ -167,13 +169,19 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Native mask occlusion preview beneath overlays/text.
   - Chroma-key enabled/color/tolerance/softness/spill model.
   - API 33+ RuntimeShader live chroma preview, schema v16 persistence + undo/redo.
-- **Patch 17:** Motion Tracking / Stabilization Foundation — current patch.
+- **Patch 17:** Motion Tracking / Stabilization Foundation — locked after CI/device verification.
   - Renderer-independent manual tracking points + interpolation.
   - Draggable preview reticle, point navigation and undo/redo.
   - Stabilization state/preview with strength + auto-crop.
   - Tracking-safe trim/split/speed/reverse semantics, schema v17 persistence.
-- **Patch 18:** Advanced Color / GPU Compositor Foundation — next.
-- **Patch 19+:** production export, advanced audio/text, AI/templates/cloud.
+- **Patch 18:** Advanced Color / GPU Compositor Foundation — current patch.
+  - Per-main-clip exposure/contrast/saturation/temperature/tint/fade.
+  - Deterministic Android-free `ColorGradeEngine`.
+  - API 31+ hardware color preview and API 33+ chroma+color RenderEffect chaining.
+  - Android-free `FrameCompositionBuilder` resolving canonical transform/mask/chroma/color/effect/transition render state.
+  - Schema v18 persistence + undo/redo.
+- **Patch 19:** Production Render / Export Engine Foundation — next.
+- **Patch 20+:** advanced color shaders/audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

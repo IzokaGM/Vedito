@@ -167,6 +167,16 @@ data class ChromaKeySpec(
 )
 
 
+data class ColorGradeSpec(
+    val exposure: Float = 0f,
+    val contrast: Float = 0f,
+    val saturation: Float = 0f,
+    val temperature: Float = 0f,
+    val tint: Float = 0f,
+    val fade: Float = 0f
+)
+
+
 enum class TrackingPointSource {
     MANUAL,
     ASSISTED
@@ -202,6 +212,7 @@ data class Clip(
     val transitionOut: TransitionSpec = TransitionSpec(),
     val mask: MaskSpec = MaskSpec(),
     val chromaKey: ChromaKeySpec = ChromaKeySpec(),
+    val colorGrade: ColorGradeSpec = ColorGradeSpec(),
     val motionTrack: MotionTrackSpec = MotionTrackSpec(),
     val stabilization: StabilizationSpec = StabilizationSpec()
 ) {

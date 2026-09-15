@@ -19,6 +19,8 @@ import com.vedito.app.core.audio.AudioPlaybackEngine
 import com.vedito.app.core.audio.AudioProbe
 import com.vedito.app.core.audio.AudioTimelineEditor
 import com.vedito.app.core.audio.AudioWaveformCache
+import com.vedito.app.core.color.ColorGradeEngine
+import com.vedito.app.core.compositor.FrameCompositionBuilder
 import com.vedito.app.core.media.MediaProbe
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
@@ -26,6 +28,7 @@ import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
 import com.vedito.app.core.model.ChromaKeySpec
+import com.vedito.app.core.model.ColorGradeSpec
 import com.vedito.app.core.model.CaptionPreset
 import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.Clip
@@ -75,6 +78,7 @@ import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
+import com.vedito.app.feature.editor.color.ColorGradeToolbarView
 import com.vedito.app.feature.editor.caption.CaptionToolbarView
 import com.vedito.app.feature.editor.effect.EffectToolbarView
 import com.vedito.app.feature.editor.overlay.OverlayPreviewController
@@ -272,6 +276,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.maskChromaToolbar.onAction = ::handleMaskChromaAction
+        binding.colorToolbar.onAction = ::handleColorAction
         binding.trackingToolbar.onAction = ::handleTrackingAction
         binding.trackingOverlay.onAnchorCommitted = { x, y -> upsertTrackingAnchor(x, y) }
         binding.timingToolbar.onAction = ::handleTimingAction
@@ -650,6 +655,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             binding.playerError.visibility = View.GONE
             previewPlayer.setVisualTransform(ClipTransform())
             previewPlayer.setChromaKey(ChromaKeySpec())
+            previewPlayer.setColorGrade(ColorGradeSpec())
             binding.maskPreviewLayer.render(MaskSpec(), canvasSettings.background.argb)
             applyCanvasPreviewLayout()
             previewPlayer.load(Uri.parse(asset.uri), 0, false)
@@ -792,8 +798,60 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun applyMaskChromaPreview(clip: Clip) {
         if (!::previewPlayer.isInitialized) return
-        previewPlayer.setChromaKey(clip.chromaKey)
-        binding.maskPreviewLayer.render(clip.mask, canvasSettings.background.argb)
+        val frame = FrameCompositionBuilder.build(clips, effectClips, timelinePositionMs)
+            ?.takeIf { it.clipId == clip.id }
+        previewPlayer.setChromaKey(frame?.chromaKey ?: clip.chromaKey)
+        previewPlayer.setColorGrade(frame?.colorGrade ?: clip.colorGrade)
+        binding.maskPreviewLayer.render(frame?.mask ?: clip.mask, canvasSettings.background.argb)
+    }
+
+    private fun handleColorAction(action: ColorGradeToolbarView.Action) {
+        if (selectedOverlayClipId != null || selectedTextClipId != null || selectedCaptionSegmentId != null) return
+        when (action) {
+            ColorGradeToolbarView.Action.EXPOSURE_DOWN -> mutateSelectedColor { it.copy(exposure = it.exposure - COLOR_EXPOSURE_STEP) }
+            ColorGradeToolbarView.Action.EXPOSURE_UP -> mutateSelectedColor { it.copy(exposure = it.exposure + COLOR_EXPOSURE_STEP) }
+            ColorGradeToolbarView.Action.CONTRAST_DOWN -> mutateSelectedColor { it.copy(contrast = it.contrast - COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.CONTRAST_UP -> mutateSelectedColor { it.copy(contrast = it.contrast + COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.SATURATION_DOWN -> mutateSelectedColor { it.copy(saturation = it.saturation - COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.SATURATION_UP -> mutateSelectedColor { it.copy(saturation = it.saturation + COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.TEMPERATURE_DOWN -> mutateSelectedColor { it.copy(temperature = it.temperature - COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.TEMPERATURE_UP -> mutateSelectedColor { it.copy(temperature = it.temperature + COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.TINT_DOWN -> mutateSelectedColor { it.copy(tint = it.tint - COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.TINT_UP -> mutateSelectedColor { it.copy(tint = it.tint + COLOR_ADJUST_STEP) }
+            ColorGradeToolbarView.Action.FADE -> mutateSelectedColor { color ->
+                val presets = COLOR_FADE_PRESETS
+                val index = presets.indices.minByOrNull { kotlin.math.abs(presets[it] - color.fade) } ?: 0
+                color.copy(fade = presets[(index + 1) % presets.size])
+            }
+            ColorGradeToolbarView.Action.RESET -> mutateSelectedColor { ColorGradeSpec() }
+        }
+    }
+
+    private fun mutateSelectedColor(change: (ColorGradeSpec) -> ColorGradeSpec) {
+        val id = selectedClipId ?: return
+        val index = clips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = clips[index]
+        val nextColor = ColorGradeEngine.normalize(change(current.colorGrade))
+        if (nextColor == current.colorGrade) return
+        val before = snapshot()
+        pauseForVisualEdit()
+        val updated = current.copy(colorGrade = nextColor)
+        clips = clips.toMutableList().apply { this[index] = updated }
+        refreshTimelineIndex()
+        history.record(before)
+        if (timelineIndex.locate(timelinePositionMs)?.clip?.id == id) applyMaskChromaPreview(updated)
+        updateSelectionUi()
+        updateColorToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun updateColorToolbar() {
+        if (!::binding.isInitialized) return
+        val supported = selectedOverlayClipId == null && selectedTextClipId == null && selectedCaptionSegmentId == null
+        val clip = if (supported) selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } else null
+        binding.colorToolbar.setState(clip?.colorGrade, clip != null)
     }
 
     private fun updateMaskChromaToolbar() {
@@ -801,6 +859,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val supported = selectedOverlayClipId == null && selectedTextClipId == null && selectedCaptionSegmentId == null
         val clip = if (supported) selectedClipId?.let { id -> clips.firstOrNull { it.id == id } } else null
         binding.maskChromaToolbar.setState(clip?.mask, clip?.chromaKey, clip != null)
+        updateColorToolbar()
         updateTrackingUi()
     }
 
@@ -1387,6 +1446,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         (timelinePositionMs - clip.timelineStartMs).coerceIn(0, clip.durationMs)
 
     private fun effectiveTransformForClip(clip: Clip, timelineMs: Int): ClipTransform {
+        FrameCompositionBuilder.build(clips, effectClips, timelineMs)?.let { frame ->
+            if (frame.clipId == clip.id) return frame.transform
+        }
         val local = (timelineMs - timelineIndex.startOf(clip.id)).coerceIn(0, clip.durationMs)
         return MotionTrackingEngine.applyStabilization(
             base = KeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs),
@@ -1486,6 +1548,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             applyMaskChromaPreview(activeClip)
         } else if (::previewPlayer.isInitialized) {
             previewPlayer.setChromaKey(ChromaKeySpec())
+            previewPlayer.setColorGrade(ColorGradeSpec())
             binding.maskPreviewLayer.render(MaskSpec(), canvasSettings.background.argb)
             binding.trackingOverlay.render(MotionTrackSpec(), 0, 0, false)
         }
@@ -3132,6 +3195,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private val CHROMA_SOFTNESS_PRESETS = floatArrayOf(0.04f, 0.08f, 0.12f, 0.20f, 0.30f)
     private val CHROMA_SPILL_PRESETS = floatArrayOf(0f, 0.15f, 0.30f, 0.50f, 0.75f)
     private val STABILIZATION_STRENGTH_PRESETS = floatArrayOf(0.35f, 0.50f, 0.65f, 0.80f, 1.0f)
+    private val COLOR_FADE_PRESETS = floatArrayOf(0f, 0.12f, 0.25f, 0.40f, 0.60f)
     private val CHROMA_KEY_COLORS = intArrayOf(
         MaskChromaToolbarView.KEY_GREEN,
         MaskChromaToolbarView.KEY_BLUE,
@@ -3141,6 +3205,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     companion object {
         private const val MASK_MOVE_STEP = 0.05f
         private const val MASK_SIZE_STEP = 0.10f
+        private const val COLOR_EXPOSURE_STEP = 0.25f
+        private const val COLOR_ADJUST_STEP = 0.10f
         const val EXTRA_PROJECT_ID = "vedito.project_id"
         private const val MAX_ADDED_VIDEOS = 12
         private const val MAX_ADDED_AUDIO = 12

@@ -2,6 +2,8 @@ package com.vedito.app.feature.editor.player
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -14,7 +16,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import android.view.TextureView
+import com.vedito.app.core.color.ColorGradeEngine
 import com.vedito.app.core.model.ChromaKeySpec
+import com.vedito.app.core.model.ColorGradeSpec
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTransform
@@ -51,6 +55,7 @@ class PreviewPlayer(
     private var loadGeneration = 0
     private var visualTransform = ClipTransform()
     private var chromaKey = ChromaKeySpec()
+    private var colorGrade = ColorGradeSpec()
 
     private var timingMode = ClipPlaybackMode.FORWARD
     private var playbackSpeed = 1f
@@ -106,7 +111,14 @@ class PreviewPlayer(
         val safe = MaskChromaComposition.normalize(spec)
         if (safe == chromaKey) return
         chromaKey = safe
-        applyChromaKeyPreview()
+        applyRenderPipeline()
+    }
+
+    fun setColorGrade(spec: ColorGradeSpec) {
+        val safe = ColorGradeEngine.normalize(spec)
+        if (safe == colorGrade) return
+        colorGrade = safe
+        applyRenderPipeline()
     }
 
     fun configureTiming(
@@ -273,31 +285,34 @@ class PreviewPlayer(
         }
     }
 
-    private fun applyChromaKeyPreview() {
+    private fun applyRenderPipeline() {
         if (Build.VERSION.SDK_INT < 31) return
-        if (!chromaKey.enabled) {
-            textureView.setRenderEffect(null)
-            return
-        }
-        if (Build.VERSION.SDK_INT < 33) {
-            // Renderer-independent state is still preserved. RuntimeShader preview needs API 33+.
-            textureView.setRenderEffect(null)
-            return
-        }
 
         runCatching {
-            val safe = MaskChromaComposition.normalize(chromaKey)
-            val shader = RuntimeShader(CHROMA_SHADER)
-            shader.setFloatUniform(
-                "keyColor",
-                Color.red(safe.keyColorArgb) / 255f,
-                Color.green(safe.keyColorArgb) / 255f,
-                Color.blue(safe.keyColorArgb) / 255f
-            )
-            shader.setFloatUniform("tolerance", safe.tolerance)
-            shader.setFloatUniform("softness", safe.softness)
-            shader.setFloatUniform("spill", safe.spill)
-            textureView.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "content"))
+            var composed: RenderEffect? = null
+            val safeColor = ColorGradeEngine.normalize(colorGrade)
+            if (!ColorGradeEngine.isNeutral(safeColor)) {
+                val matrix = ColorMatrix(ColorGradeEngine.colorMatrix(safeColor))
+                composed = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(matrix))
+            }
+
+            if (chromaKey.enabled && Build.VERSION.SDK_INT >= 33) {
+                val safe = MaskChromaComposition.normalize(chromaKey)
+                val shader = RuntimeShader(CHROMA_SHADER)
+                shader.setFloatUniform(
+                    "keyColor",
+                    Color.red(safe.keyColorArgb) / 255f,
+                    Color.green(safe.keyColorArgb) / 255f,
+                    Color.blue(safe.keyColorArgb) / 255f
+                )
+                shader.setFloatUniform("tolerance", safe.tolerance)
+                shader.setFloatUniform("softness", safe.softness)
+                shader.setFloatUniform("spill", safe.spill)
+                val chromaEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
+                composed = composed?.let { RenderEffect.createChainEffect(it, chromaEffect) } ?: chromaEffect
+            }
+
+            textureView.setRenderEffect(composed)
         }.onFailure { textureView.setRenderEffect(null) }
     }
 

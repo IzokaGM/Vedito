@@ -24,6 +24,7 @@ import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.MaskShape
 import com.vedito.app.core.model.MaskSpec
 import com.vedito.app.core.model.ChromaKeySpec
+import com.vedito.app.core.model.ColorGradeSpec
 import com.vedito.app.core.model.MotionTrackSpec
 import com.vedito.app.core.model.StabilizationSpec
 import com.vedito.app.core.model.TrackingPoint
@@ -42,6 +43,7 @@ import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.core.visual.MaskChromaComposition
+import com.vedito.app.core.color.ColorGradeEngine
 import com.vedito.app.core.tracking.MotionTrackingEngine
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.caption.CaptionTimelineEditor
@@ -178,6 +180,7 @@ class ProjectRepository(context: Context) {
                         transitionOut = parseTransition(clip.optJSONObject("transitionOut")),
                         mask = parseMask(clip.optJSONObject("mask")),
                         chromaKey = parseChromaKey(clip.optJSONObject("chromaKey")),
+                        colorGrade = parseColorGrade(clip.optJSONObject("colorGrade")),
                         motionTrack = parseMotionTrack(clip.optJSONObject("motionTrack")),
                         stabilization = parseStabilization(clip.optJSONObject("stabilization"))
                     ).let { parsed ->
@@ -251,6 +254,20 @@ class ProjectRepository(context: Context) {
                 tolerance = json.optDouble("tolerance", 0.22).toFloat(),
                 softness = json.optDouble("softness", 0.10).toFloat(),
                 spill = json.optDouble("spill", 0.15).toFloat()
+            )
+        )
+    }
+
+    private fun parseColorGrade(json: JSONObject?): ColorGradeSpec {
+        if (json == null) return ColorGradeSpec()
+        return ColorGradeEngine.normalize(
+            ColorGradeSpec(
+                exposure = json.optDouble("exposure", 0.0).toFloat(),
+                contrast = json.optDouble("contrast", 0.0).toFloat(),
+                saturation = json.optDouble("saturation", 0.0).toFloat(),
+                temperature = json.optDouble("temperature", 0.0).toFloat(),
+                tint = json.optDouble("tint", 0.0).toFloat(),
+                fade = json.optDouble("fade", 0.0).toFloat()
             )
         )
     }
@@ -528,6 +545,7 @@ class ProjectRepository(context: Context) {
                     .put("transitionOut", transitionToJson(clip.transitionOut))
                     .put("mask", maskToJson(clip.mask))
                     .put("chromaKey", chromaKeyToJson(clip.chromaKey))
+                    .put("colorGrade", colorGradeToJson(clip.colorGrade))
                     .put("motionTrack", motionTrackToJson(clip.motionTrack, clip.durationMs))
                     .put("stabilization", stabilizationToJson(clip.stabilization))
             )
@@ -704,6 +722,17 @@ class ProjectRepository(context: Context) {
             .put("spill", safe.spill.toDouble())
     }
 
+    private fun colorGradeToJson(color: ColorGradeSpec): JSONObject {
+        val safe = ColorGradeEngine.normalize(color)
+        return JSONObject()
+            .put("exposure", safe.exposure.toDouble())
+            .put("contrast", safe.contrast.toDouble())
+            .put("saturation", safe.saturation.toDouble())
+            .put("temperature", safe.temperature.toDouble())
+            .put("tint", safe.tint.toDouble())
+            .put("fade", safe.fade.toDouble())
+    }
+
     private fun motionTrackToJson(track: MotionTrackSpec, durationMs: Int): JSONObject {
         val safe = MotionTrackingEngine.normalize(track, durationMs)
         val points = JSONArray()
@@ -832,6 +861,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 17
+        private const val SCHEMA_VERSION = 18
     }
 }

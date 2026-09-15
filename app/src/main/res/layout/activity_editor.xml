@@ -219,6 +219,13 @@
             android:layout_marginTop="2dp"
             android:contentDescription="Mask and chroma key controls" />
 
+        <com.vedito.app.feature.editor.color.ColorGradeToolbarView
+            android:id="@+id/colorToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Color grading controls" />
+
         <com.vedito.app.feature.editor.tracking.TrackingStabilizationToolbarView
             android:id="@+id/trackingToolbar"
             android:layout_width="match_parent"

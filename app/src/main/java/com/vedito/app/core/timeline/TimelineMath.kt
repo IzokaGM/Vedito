@@ -4,6 +4,7 @@ import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.keyframe.KeyframeEngine
+import com.vedito.app.core.color.ColorGradeEngine
 import com.vedito.app.core.tracking.MotionTrackingEngine
 
 object TimelineMath {
@@ -72,7 +73,8 @@ object TimelineMath {
                     it.copy(
                         keyframes = KeyframeEngine.normalize(it.keyframes, it.durationMs),
                         motionTrack = MotionTrackingEngine.normalize(it.motionTrack, it.durationMs),
-                        stabilization = MotionTrackingEngine.normalize(it.stabilization)
+                        stabilization = MotionTrackingEngine.normalize(it.stabilization),
+                        colorGrade = ColorGradeEngine.normalize(it.colorGrade)
                     )
                 }
             if (normalized.timing.mode == ClipPlaybackMode.FREEZE && normalized.durationMs <= 0) null else normalized
