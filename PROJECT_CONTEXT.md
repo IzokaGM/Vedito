@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.10.0 / versionCode 10**
+- Current patch: **0.11.0 / versionCode 11**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -50,10 +50,12 @@ Current external CI concept:
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
 - `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
 - `OverlayComposition`: renderer-independent active-layer resolver shared concept for preview now and deterministic export later.
+- `TextClip`: timed manual text/caption layer with `TextStyle`, `TextTransform` and z-order.
+- `TextComposition`: renderer-independent active text-layer resolver for preview/export reuse.
 - `Project`: video/audio assets and clips, canvas, playhead, selection, zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v10.
+- `core/projects/ProjectRepository.kt` — persistence, schema v11.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -64,6 +66,8 @@ Important modules:
 - `core/audio/*` + `feature/editor/audio/AudioTimelineView.kt` — audio foundation.
 - `core/overlay/OverlayComposition.kt`, `OverlayTimelineEditor.kt` — renderer-independent PIP layer resolution and timing edits.
 - `feature/editor/overlay/OverlayTimelineView.kt`, `OverlayPreviewController.kt` — overlay editing/preview implementation.
+- `core/text/TextComposition.kt`, `TextTimelineEditor.kt` — text timing/layer/state rules.
+- `feature/editor/text/TextTimelineView.kt`, `TextToolbarView.kt`, `TextPreviewController.kt` — native manual text editing/preview.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
 ## Completed progression
@@ -76,32 +80,31 @@ Important modules:
 - Per-clip scale/position/rotate/flip/opacity/crop/fit-fill + project canvas ratio/background.
 - Patch 09: timing model, uniform speed, reverse foundation, freeze clips, timing persistence and timing-aware timeline math.
 - Patch 10: independent image/video overlay/PIP clips, z-order, drag/trim, shared transforms, synchronized preview composition, undo/redo and persistence.
+- Patch 11: timed manual text layers, content editing, text timeline move/trim, text z-order, style/transform controls, renderer-independent text composition, undo/redo and persistence.
 
-## Patch 10 behavior/limits
-- Overlay image/video clips are independent from the base ripple video timeline and are positioned by absolute project time.
-- Image overlays default to 3s; video overlays default to available source/project duration.
-- Overlay timeline supports selection, move and edge trim. Layer order is persistent through `zIndex`.
-- Selected overlay reuses `ClipTransform` controls (scale/position/rotate/flip/opacity/crop/fit-fill).
-- Preview resolves active layers through `OverlayComposition`; this model is intentionally Android-View-free so the future export compositor can consume the same state.
-- Video overlay audio is muted in preview. Overlay speed/reverse/keyframes and production overlay audio routing are later work.
-- Compact UI displays three visual lanes at a time via modulo lane placement; z-order itself can exceed three.
+## Patch 11 behavior/limits
+- Text clips use absolute project time and are normalized when the base video duration changes.
+- Manual text supports multiline content, size/color/background/bold/alignment plus scale/position/rotation/opacity.
+- Text preview is implemented with native Views, but `TextComposition` and model state are Android-View-free for deterministic export reuse.
+- Text layers currently sit above visual PIP layers as a group; unified cross-type layer ordering is future compositor work.
+- SRT import/export, caption segmentation, auto captions, per-word/karaoke styling, text animations and font asset packs are intentionally not completed.
 
 ## Explicitly not completed
 - Speed curves UI/easing.
 - Production reverse decoder or reversed source audio.
 - Freeze duration UI beyond default insertion.
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
-- Text/captions.
+- SRT import/export, subtitle segmentation, auto captions, per-word/karaoke timing, TTS and text animation.
 - Effects/transitions/color grading.
 - Keyframes/masks/chroma/tracking/stabilization.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
 ## Next milestone
-**Patch 11 — Text & Caption Track Foundation**
-- timed text layers with transform/style state,
-- text track selection/editing,
-- renderer-independent text composition state for preview/export reuse,
-- persistence + undo/redo; caption/SRT/auto-caption features build on this foundation later.
+**Patch 12 — Caption/Subtitles Foundation**
+- subtitle/caption segment model built on the Patch 11 text layer foundation,
+- SRT import/export and caption segment editing,
+- caption-safe styling/presets and batch timing operations,
+- persistence + undo/redo; auto-caption/word-level timing remains later AI work.
 
 See `WORKPLAN.md` for the full roadmap.

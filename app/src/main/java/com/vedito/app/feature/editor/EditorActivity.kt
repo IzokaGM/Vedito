@@ -1,12 +1,15 @@
 package com.vedito.app.feature.editor
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.widget.EditText
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
@@ -32,6 +35,10 @@ import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
+import com.vedito.app.core.model.TextAlignment
+import com.vedito.app.core.model.TextClip
+import com.vedito.app.core.model.TextStyle
+import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.projects.ProjectRepository
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.timeline.ClipTimeMap
@@ -40,11 +47,14 @@ import com.vedito.app.core.timeline.FrameTimecode
 import com.vedito.app.core.timeline.TimelineEditor
 import com.vedito.app.core.timeline.TimelineIndex
 import com.vedito.app.core.timeline.TimelineMath
+import com.vedito.app.core.text.TextTimelineEditor
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.editor.overlay.OverlayPreviewController
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
+import com.vedito.app.feature.editor.text.TextPreviewController
+import com.vedito.app.feature.editor.text.TextToolbarView
 import com.vedito.app.feature.editor.timing.TimingToolbarView
 import com.vedito.app.feature.editor.visual.TransformToolbarView
 import com.vedito.app.ui.applySystemBarInsets
@@ -62,6 +72,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var audioPlayback: AudioPlaybackEngine
     private lateinit var audioWaveformCache: AudioWaveformCache
     private lateinit var overlayPreview: OverlayPreviewController
+    private lateinit var textPreview: TextPreviewController
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -72,11 +83,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var audioClips: List<AudioClip> = emptyList()
     private var overlayAssets: List<OverlayAsset> = emptyList()
     private var overlayClips: List<OverlayClip> = emptyList()
+    private var textClips: List<TextClip> = emptyList()
     private var canvasSettings = CanvasSettings()
     private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
     private var selectedAudioClipId: String? = null
     private var selectedOverlayClipId: String? = null
+    private var selectedTextClipId: String? = null
     private var timelinePositionMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
@@ -89,6 +102,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var replaceTargetClipId: String? = null
     private var pendingAudioEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingOverlayEditSnapshot: EditorHistory.Snapshot? = null
+    private var pendingTextEditSnapshot: EditorHistory.Snapshot? = null
     private var addingOverlay = false
 
     private val addVideoPicker = registerForActivityResult(
@@ -145,11 +159,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioClips = sanitizeAudioClips(project.audioClips)
         overlayAssets = project.overlayAssets
         overlayClips = sanitizeOverlayClips(project.overlayClips)
+        textClips = sanitizeTextClips(project.textClips)
         canvasSettings = project.canvasSettings
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = project.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         selectedOverlayClipId = project.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
+        selectedTextClipId = project.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = project.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         timelineZoom = project.timelineZoom.coerceIn(1f, 8f)
@@ -186,6 +202,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.overlayBackButton.setOnClickListener { changeOverlayLayer(-1) }
         binding.overlayFrontButton.setOnClickListener { changeOverlayLayer(1) }
         binding.overlayDeleteButton.setOnClickListener { deleteSelectedOverlay() }
+        binding.addTextButton.setOnClickListener { showTextDialog(null) }
+        binding.editTextButton.setOnClickListener { selectedTextClipId?.let { id -> textClips.firstOrNull { it.id == id } }?.let(::showTextDialog) }
+        binding.textBackButton.setOnClickListener { changeTextLayer(-1) }
+        binding.textFrontButton.setOnClickListener { changeTextLayer(1) }
+        binding.textDeleteButton.setOnClickListener { deleteSelectedText() }
+        binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.timingToolbar.onAction = ::handleTimingAction
         binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
@@ -213,9 +235,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
         binding.overlayTimeline.onOverlaySelected = { id ->
             selectedOverlayClipId = id
+            selectedTextClipId = null
             updateOverlayUi()
+            updateTextUi()
             updateVisualToolbar()
+            updateTimingToolbar()
             renderOverlayState()
+            renderTextState()
             saveProject()
         }
         binding.overlayTimeline.onOverlayEditStart = { id ->
@@ -231,13 +257,42 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (finished) finishOverlayGestureEdit() else renderOverlayState()
         }
 
-        binding.timeline.onClipSelected = { id ->
-            selectedClipId = id
+        binding.textTimeline.onTextSelected = { id ->
+            selectedTextClipId = id
             selectedOverlayClipId = null
-            updateSelectionUi()
+            updateTextUi()
             updateOverlayUi()
             updateVisualToolbar()
             updateTimingToolbar()
+            renderTextState()
+            renderOverlayState()
+            saveProject()
+        }
+        binding.textTimeline.onTextEditStart = { id ->
+            selectedTextClipId = id
+            selectedOverlayClipId = null
+            pendingTextEditSnapshot = snapshot()
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+        }
+        binding.textTimeline.onTextChanged = { edited, finished ->
+            textClips = textClips.map { if (it.id == edited.id) edited else it }
+            selectedTextClipId = edited.id
+            if (finished) finishTextGestureEdit() else renderTextState()
+        }
+
+        binding.timeline.onClipSelected = { id ->
+            selectedClipId = id
+            selectedOverlayClipId = null
+            selectedTextClipId = null
+            updateSelectionUi()
+            updateOverlayUi()
+            updateTextUi()
+            updateVisualToolbar()
+            updateTimingToolbar()
+            renderOverlayState()
+            renderTextState()
             saveProject()
         }
         binding.timeline.onScrubbed = { position ->
@@ -271,6 +326,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updateZoomUi()
             renderAudioState()
             renderOverlayState()
+            renderTextState()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -281,10 +337,29 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayPreview = OverlayPreviewController(this, binding.overlayPreviewLayer)
         overlayPreview.onOverlaySelected = { id ->
             selectedOverlayClipId = id
+            selectedTextClipId = null
+            updateOverlayUi()
+            updateTextUi()
+            updateVisualToolbar()
+            updateTimingToolbar()
+            renderOverlayState()
+            renderTextState()
+            saveProject()
+        }
+        textPreview = TextPreviewController(this, binding.textPreviewLayer)
+        textPreview.onTextSelected = { id ->
+            selectedTextClipId = id
+            selectedOverlayClipId = null
+            updateTextUi()
             updateOverlayUi()
             updateVisualToolbar()
+            updateTimingToolbar()
+            renderTextState()
             renderOverlayState()
             saveProject()
+        }
+        binding.textPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
         }
         applyCanvasPreviewLayout()
         audioPlayback.setTimeline(audioAssets, audioClips)
@@ -309,6 +384,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::audioPlayback.isInitialized) audioPlayback.release()
         if (::audioWaveformCache.isInitialized) audioWaveformCache.release()
         if (::overlayPreview.isInitialized) overlayPreview.release()
+        if (::textPreview.isInitialized) textPreview.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
@@ -396,6 +472,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.playPauseButton.contentDescription = if (isPlaying) "Pause" else "Play"
         if (isPlaying) audioPlayback.playFrom(timelinePositionMs) else audioPlayback.pause()
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, isPlaying, selectedOverlayClipId)
+        if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
     }
 
     override fun onError(message: String) {
@@ -551,6 +628,69 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateHistoryUi()
     }
 
+    private fun handleTextAction(action: TextToolbarView.Action) {
+        when (action) {
+            TextToolbarView.Action.SCALE_DOWN -> mutateSelectedText { it.copy(transform = it.transform.copy(scale = it.transform.scale - 0.1f)) }
+            TextToolbarView.Action.SCALE_UP -> mutateSelectedText { it.copy(transform = it.transform.copy(scale = it.transform.scale + 0.1f)) }
+            TextToolbarView.Action.MOVE_LEFT -> mutateSelectedText { it.copy(transform = it.transform.copy(positionX = it.transform.positionX - TEXT_POSITION_STEP)) }
+            TextToolbarView.Action.MOVE_RIGHT -> mutateSelectedText { it.copy(transform = it.transform.copy(positionX = it.transform.positionX + TEXT_POSITION_STEP)) }
+            TextToolbarView.Action.MOVE_UP -> mutateSelectedText { it.copy(transform = it.transform.copy(positionY = it.transform.positionY - TEXT_POSITION_STEP)) }
+            TextToolbarView.Action.MOVE_DOWN -> mutateSelectedText { it.copy(transform = it.transform.copy(positionY = it.transform.positionY + TEXT_POSITION_STEP)) }
+            TextToolbarView.Action.ROTATE -> mutateSelectedText { it.copy(transform = it.transform.copy(rotationDegrees = it.transform.rotationDegrees + 15f)) }
+            TextToolbarView.Action.OPACITY -> mutateSelectedText {
+                val next = when {
+                    it.transform.opacity > 0.76f -> 0.75f
+                    it.transform.opacity > 0.51f -> 0.50f
+                    it.transform.opacity > 0.26f -> 0.25f
+                    else -> 1f
+                }
+                it.copy(transform = it.transform.copy(opacity = next))
+            }
+            TextToolbarView.Action.FONT_DOWN -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp - 4f)) }
+            TextToolbarView.Action.FONT_UP -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp + 4f)) }
+            TextToolbarView.Action.COLOR -> mutateSelectedText {
+                val current = TEXT_COLORS.indexOf(it.style.textColorArgb).takeIf { index -> index >= 0 } ?: 0
+                it.copy(style = it.style.copy(textColorArgb = TEXT_COLORS[(current + 1) % TEXT_COLORS.size]))
+            }
+            TextToolbarView.Action.BACKGROUND -> mutateSelectedText {
+                val current = TEXT_BACKGROUNDS.indexOf(it.style.backgroundColorArgb).takeIf { index -> index >= 0 } ?: 0
+                it.copy(style = it.style.copy(backgroundColorArgb = TEXT_BACKGROUNDS[(current + 1) % TEXT_BACKGROUNDS.size]))
+            }
+            TextToolbarView.Action.BOLD -> mutateSelectedText { it.copy(style = it.style.copy(bold = !it.style.bold)) }
+            TextToolbarView.Action.ALIGN -> mutateSelectedText {
+                val values = TextAlignment.values()
+                val current = values.indexOf(it.style.alignment).coerceAtLeast(0)
+                it.copy(style = it.style.copy(alignment = values[(current + 1) % values.size]))
+            }
+            TextToolbarView.Action.RESET_TRANSFORM -> mutateSelectedText { it.copy(transform = TextTransform()) }
+        }
+    }
+
+    private fun mutateSelectedText(change: (TextClip) -> TextClip) {
+        val id = selectedTextClipId ?: return
+        val index = textClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = textClips[index]
+        val changed = change(current)
+        val normalized = changed.copy(
+            style = TextTimelineEditor.normalizeStyle(changed.style),
+            transform = TextTimelineEditor.normalizeTransform(changed.transform)
+        )
+        if (normalized == current) return
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        textClips = textClips.toMutableList().apply { this[index] = normalized }
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        updateVisualToolbar()
+        updateTimingToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
     private fun handleVisualAction(action: TransformToolbarView.Action) {
         when (action) {
             TransformToolbarView.Action.SCALE_DOWN -> mutateActiveTransform { it.copy(scale = it.scale - 0.1f) }
@@ -661,13 +801,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun updateVisualToolbar() {
-        val transform = selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id }?.transform }
-            ?: clips.firstOrNull { it.id == selectedClipId }?.transform
+        val transform = if (selectedTextClipId != null) null else {
+            selectedOverlayClipId?.let { id -> overlayClips.firstOrNull { it.id == id }?.transform }
+                ?: clips.firstOrNull { it.id == selectedClipId }?.transform
+        }
         binding.visualToolbar.setState(transform, canvasSettings)
     }
 
     private fun updateTimingToolbar() {
-        binding.timingToolbar.setState(clips.firstOrNull { it.id == selectedClipId })
+        binding.timingToolbar.setState(if (selectedTextClipId == null) clips.firstOrNull { it.id == selectedClipId } else null)
     }
 
     private fun applyCanvasPreviewLayout(preferredClip: Clip? = null) {
@@ -944,6 +1086,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingReorderSnapshot = null
         pendingAudioEditSnapshot = null
         pendingOverlayEditSnapshot = null
+        pendingTextEditSnapshot = null
         val target = history.undo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -955,6 +1098,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingReorderSnapshot = null
         pendingAudioEditSnapshot = null
         pendingOverlayEditSnapshot = null
+        pendingTextEditSnapshot = null
         val target = history.redo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -966,11 +1110,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioClips = sanitizeAudioClips(snapshot.audioClips)
         overlayAssets = snapshot.overlayAssets
         overlayClips = sanitizeOverlayClips(snapshot.overlayClips)
+        textClips = sanitizeTextClips(snapshot.textClips)
         canvasSettings = snapshot.canvasSettings
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = snapshot.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         selectedOverlayClipId = snapshot.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
+        selectedTextClipId = snapshot.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = snapshot.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         renderTimelineState()
@@ -999,10 +1145,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioClips = audioClips.toList(),
         overlayAssets = overlayAssets.toList(),
         overlayClips = overlayClips.toList(),
+        textClips = textClips.toList(),
         canvasSettings = canvasSettings,
         selectedClipId = selectedClipId,
         selectedAudioClipId = selectedAudioClipId,
         selectedOverlayClipId = selectedOverlayClipId,
+        selectedTextClipId = selectedTextClipId,
         playheadMs = timelinePositionMs
     )
 
@@ -1036,6 +1184,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pruneUnusedOverlayAssets()
         renderOverlayState()
         updateOverlayUi()
+        textClips = sanitizeTextClips(textClips)
+        if (selectedTextClipId != null && textClips.none { it.id == selectedTextClipId }) selectedTextClipId = null
+        renderTextState()
+        updateTextUi()
+        updateVisualToolbar()
+        updateTimingToolbar()
     }
 
     private fun setTimelinePosition(positionMs: Int) {
@@ -1047,6 +1201,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateAudioUi()
         binding.audioTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         binding.overlayTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        binding.textTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
     }
 
@@ -1538,10 +1694,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             overlayClips = sanitizeOverlayClips(overlayClips + additions)
             pruneUnusedOverlayAssets()
             selectedOverlayClipId = additions.last().id
+            selectedTextClipId = null
             history.record(before)
             renderOverlayState()
+            renderTextState()
             updateOverlayUi()
+            updateTextUi()
             updateVisualToolbar()
+            updateTimingToolbar()
             saveProject()
             updateHistoryUi()
         }
@@ -1651,6 +1811,150 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         return "Overlay"
     }
 
+    private fun showTextDialog(existing: TextClip?) {
+        if (timelineIndex.totalDurationMs < TextTimelineEditor.MIN_DURATION_MS) {
+            binding.textSelectionLabel.text = "Add a video clip before adding text"
+            return
+        }
+        val input = EditText(this).apply {
+            setText(existing?.text.orEmpty())
+            hint = "Type text"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            minLines = 2
+            maxLines = 6
+            setPadding((20 * resources.displayMetrics.density).roundToInt(), (12 * resources.displayMetrics.density).roundToInt(), (20 * resources.displayMetrics.density).roundToInt(), (12 * resources.displayMetrics.density).roundToInt())
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (existing == null) "Add text" else "Edit text")
+            .setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(if (existing == null) "Add" else "Save") { _, _ ->
+                upsertTextClip(existing, input.text?.toString().orEmpty())
+            }
+            .show()
+    }
+
+    private fun upsertTextClip(existing: TextClip?, rawText: String) {
+        val value = rawText.trim().take(TextTimelineEditor.MAX_TEXT_LENGTH)
+        if (value.isBlank()) return
+        val total = timelineIndex.totalDurationMs
+        if (total < TextTimelineEditor.MIN_DURATION_MS) return
+        val before = snapshot()
+        if (existing == null) {
+            val latestStart = (total - TextTimelineEditor.MIN_DURATION_MS).coerceAtLeast(0)
+            val start = timelinePositionMs.coerceIn(0, latestStart)
+            val duration = minOf(DEFAULT_TEXT_DURATION_MS, total - start).coerceAtLeast(TextTimelineEditor.MIN_DURATION_MS)
+            val clip = TextClip(
+                id = UUID.randomUUID().toString(),
+                text = value,
+                timelineStartMs = start,
+                durationMs = duration,
+                zIndex = (textClips.maxOfOrNull { it.zIndex } ?: -1) + 1,
+                style = TextStyle(),
+                transform = TextTransform()
+            )
+            textClips = sanitizeTextClips(textClips + clip)
+            selectedTextClipId = clip.id
+            selectedOverlayClipId = null
+        } else {
+            val index = textClips.indexOfFirst { it.id == existing.id }
+            if (index < 0) return
+            val updated = textClips[index].copy(text = value)
+            if (updated == textClips[index]) return
+            textClips = textClips.toMutableList().apply { this[index] = updated }
+            selectedTextClipId = updated.id
+            selectedOverlayClipId = null
+        }
+        if (before != snapshot()) history.record(before)
+        renderTextState()
+        renderOverlayState()
+        updateTextUi()
+        updateOverlayUi()
+        updateVisualToolbar()
+        updateTimingToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun sanitizeTextClips(input: List<TextClip>): List<TextClip> {
+        val total = clips.sumOf { it.durationMs }.coerceAtLeast(0)
+        return input.mapNotNull { TextTimelineEditor.normalized(it, total) }
+            .sortedWith(compareBy<TextClip> { it.zIndex }.thenBy { it.timelineStartMs }.thenBy { it.id })
+            .mapIndexed { index, clip -> if (clip.zIndex == index) clip else clip.copy(zIndex = index) }
+    }
+
+    private fun renderTextState() {
+        binding.textTimeline.setState(
+            clips = textClips,
+            selectedClipId = selectedTextClipId,
+            durationMs = timelineIndex.totalDurationMs,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs,
+            positionMs = timelinePositionMs
+        )
+        if (::textPreview.isInitialized) {
+            textPreview.setTimeline(textClips)
+            textPreview.render(timelinePositionMs, selectedTextClipId)
+        }
+    }
+
+    private fun updateTextUi() {
+        val selected = textClips.firstOrNull { it.id == selectedTextClipId }
+        val enabled = selected != null
+        listOf(binding.editTextButton, binding.textBackButton, binding.textFrontButton, binding.textDeleteButton).forEach { view ->
+            view.isEnabled = enabled
+            view.alpha = if (enabled) 1f else 0.38f
+        }
+        binding.textToolbar.setState(selected)
+        if (selected == null) {
+            binding.textSelectionLabel.text = if (textClips.isEmpty()) "No text · add a title or caption" else "Tap a text layer to select"
+            return
+        }
+        val preview = selected.text.replace('\n', ' ').take(26)
+        binding.textSelectionLabel.text = "Text · $preview · T${selected.zIndex + 1} · ${selected.style.fontSizeSp.roundToInt()}sp"
+    }
+
+    private fun finishTextGestureEdit() {
+        val before = pendingTextEditSnapshot
+        pendingTextEditSnapshot = null
+        textClips = sanitizeTextClips(textClips)
+        if (before != null && before != snapshot()) history.record(before)
+        renderTextState()
+        updateTextUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun changeTextLayer(direction: Int) {
+        val id = selectedTextClipId ?: return
+        val before = snapshot()
+        val updated = if (direction > 0) TextTimelineEditor.raise(textClips, id) else TextTimelineEditor.lower(textClips, id)
+        if (updated == textClips) return
+        textClips = sanitizeTextClips(updated)
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun deleteSelectedText() {
+        val id = selectedTextClipId ?: return
+        if (textClips.none { it.id == id }) return
+        val before = snapshot()
+        textClips = textClips.filterNot { it.id == id }
+        textClips = sanitizeTextClips(textClips)
+        selectedTextClipId = textClips.maxByOrNull { it.zIndex }?.id
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        updateVisualToolbar()
+        updateTimingToolbar()
+        saveProject()
+        updateHistoryUi()
+    }
+
     private fun pruneUnusedAssets() {
         val used = clips.mapTo(mutableSetOf()) { it.assetId }
         assets = assets.filter { it.id in used }
@@ -1668,11 +1972,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             audioClips = audioClips,
             overlayAssets = overlayAssets,
             overlayClips = overlayClips,
+            textClips = textClips,
             canvasSettings = canvasSettings,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
             selectedAudioClipId = selectedAudioClipId,
             selectedOverlayClipId = selectedOverlayClipId,
+            selectedTextClipId = selectedTextClipId,
             timelineZoom = timelineZoom,
             timelineViewportStartMs = timelineViewportStartMs
         )
@@ -1721,6 +2027,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val MAX_ADDED_AUDIO = 12
         private const val MAX_ADDED_OVERLAYS = 8
         private const val DEFAULT_IMAGE_OVERLAY_MS = 3_000
+        private const val DEFAULT_TEXT_DURATION_MS = 3_000
+        private const val TEXT_POSITION_STEP = 0.08f
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300
         private const val MIN_AUDIO_SPLIT_EDGE_MS = 150
@@ -1730,5 +2038,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val POSITION_STEP = 0.08f
         private const val CROP_STEP = 0.05f
         private val SPEED_PRESETS = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        private val TEXT_COLORS = intArrayOf(
+            0xFFFFFFFF.toInt(),
+            0xFF17131F.toInt(),
+            0xFFFFE66D.toInt(),
+            0xFF7DEBFF.toInt(),
+            0xFFFF8EDB.toInt()
+        )
+        private val TEXT_BACKGROUNDS = intArrayOf(
+            0x00000000,
+            0xB3000000.toInt(),
+            0xD9FFFFFF.toInt(),
+            0xCC241E45.toInt()
+        )
     }
 }

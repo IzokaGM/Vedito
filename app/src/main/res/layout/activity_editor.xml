@@ -94,6 +94,13 @@
                 android:layout_height="match_parent"
                 android:clipChildren="true"
                 android:clipToPadding="true" />
+
+            <FrameLayout
+                android:id="@+id/textPreviewLayer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipChildren="true"
+                android:clipToPadding="true" />
         </FrameLayout>
 
         <TextView
@@ -255,6 +262,110 @@
 
             <TextView
                 android:id="@+id/overlayDeleteButton"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Delete"
+                android:textColor="@color/vedito_text"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textSelectionLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="No text · add a title or caption"
+            android:textColor="@color/vedito_muted"
+            android:textSize="10sp" />
+
+        <com.vedito.app.feature.editor.text.TextToolbarView
+            android:id="@+id/textToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Text transform and style controls" />
+
+        <com.vedito.app.feature.editor.text.TextTimelineView
+            android:id="@+id/textTimeline"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Text timeline" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/addTextButton"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1.15"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Add text"
+                android:textColor="@color/vedito_text"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/editTextButton"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Edit"
+                android:textColor="@color/vedito_text"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/textBackButton"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Layer −"
+                android:textColor="@color/vedito_text"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/textFrontButton"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tool_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Layer +"
+                android:textColor="@color/vedito_text"
+                android:textSize="9sp" />
+
+            <TextView
+                android:id="@+id/textDeleteButton"
                 android:layout_width="0dp"
                 android:layout_height="32dp"
                 android:layout_marginStart="2dp"

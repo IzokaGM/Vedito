@@ -23,7 +23,7 @@ A feature is complete only when behavior, persistence, preview integration and e
 - 50+ clip stress target.
 
 ## Stage 2 — Core visual editing
-**Status: in progress; Patch 10 completed.**
+**Status: core visual base completed through Patch 10; later speed curves still pending.**
 Completed:
 - Crop/rotate/flip.
 - Scale/position/opacity.
@@ -36,7 +36,6 @@ Completed additionally:
 - Visual overlay/PIP tracks with timed image/video layers, z-order, transform state and preview composition.
 
 Next:
-- Text/caption track foundation.
 - Later speed curves built on `ClipTimeMap`.
 
 ## Stage 3 — Pro visual editing
@@ -66,8 +65,9 @@ Pending:
 - Retime/reverse audio model for retimed source extraction.
 
 ## Stage 5 — Text & captions
-**Pending.**
-Rich text, timing/transform, animation, subtitle track, SRT import/export, auto captions, correction, karaoke/per-word, TTS.
+**In progress; Patch 11 foundation completed.**
+Completed: timed manual text layers, content editing, basic style/transform, z-order, preview composition, persistence + undo/redo.
+Pending: subtitle/caption segment workflow, SRT import/export, text presets/fonts, animation, auto captions, correction, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
 **Pending.**
@@ -109,15 +109,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
 - **Patch 07:** Audio Editing Pro Foundation — locked after CI/device verification.
 - **Patch 08:** Core Visual Transform Engine — locked after CI/device verification.
 - **Patch 09:** Speed / Freeze / Reverse Foundation — locked after CI/device verification.
-- **Patch 10:** Visual Overlay / PIP Tracks — current patch.
+- **Patch 10:** Visual Overlay / PIP Tracks — locked after CI/device verification.
   - Timed independent image/video visual layers.
   - Drag/trim overlay timeline editing.
   - Persistent z-order/layer selection.
   - Shared transform controls.
   - `OverlayComposition` renderer-independent state for preview/export reuse.
   - Native synchronized PIP preview; overlay video audio intentionally muted.
-- **Patch 11:** Text & Caption Track Foundation.
-- **Patch 12+:** Text/caption expansion, effects/transitions, pro visual tools, then production export and AI stages.
+- **Patch 11:** Text & Caption Track Foundation — current patch.
+  - Timed manual text layers with move/trim/z-order.
+  - Text style + transform controls and native preview.
+  - Renderer-independent `TextComposition` for future export reuse.
+  - Schema v11 persistence + undo/redo.
+- **Patch 12:** Caption/Subtitles Foundation — SRT import/export, caption segments, batch-safe subtitle editing.
+- **Patch 13+:** Text/caption expansion, effects/transitions, pro visual tools, then production export and AI stages.
 
 ## Release gates
 Before locking a major stage:

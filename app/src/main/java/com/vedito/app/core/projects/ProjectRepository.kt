@@ -16,7 +16,12 @@ import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
 import com.vedito.app.core.model.Project
+import com.vedito.app.core.model.TextAlignment
+import com.vedito.app.core.model.TextClip
+import com.vedito.app.core.model.TextStyle
+import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
+import com.vedito.app.core.text.TextTimelineEditor
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -59,6 +64,7 @@ class ProjectRepository(context: Context) {
         val audioClips = parseAudioClips(item, audioAssets)
         val overlayAssets = parseOverlayAssets(item)
         val overlayClips = parseOverlayClips(item, overlayAssets)
+        val textClips = parseTextClips(item)
 
         return Project(
             id = id,
@@ -70,11 +76,13 @@ class ProjectRepository(context: Context) {
             audioClips = audioClips,
             overlayAssets = overlayAssets,
             overlayClips = overlayClips,
+            textClips = textClips,
             canvasSettings = parseCanvasSettings(item),
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
             selectedAudioClipId = item.optString("selectedAudioClipId").takeIf { it.isNotBlank() },
             selectedOverlayClipId = item.optString("selectedOverlayClipId").takeIf { it.isNotBlank() },
+            selectedTextClipId = item.optString("selectedTextClipId").takeIf { it.isNotBlank() },
             timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
             timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
@@ -283,6 +291,48 @@ class ProjectRepository(context: Context) {
         }
     }
 
+    private fun parseTextClips(item: JSONObject): List<TextClip> {
+        val array = item.optJSONArray("textClips") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val clip = array.optJSONObject(index) ?: continue
+                val id = clip.optString("id")
+                val text = clip.optString("text").trim().take(TextTimelineEditor.MAX_TEXT_LENGTH)
+                val duration = clip.optInt("durationMs", 0).coerceAtLeast(0)
+                if (id.isBlank() || text.isBlank() || duration <= 0) continue
+                val styleJson = clip.optJSONObject("style")
+                val transformJson = clip.optJSONObject("transform")
+                add(
+                    TextClip(
+                        id = id,
+                        text = text,
+                        timelineStartMs = clip.optInt("timelineStartMs", 0).coerceAtLeast(0),
+                        durationMs = duration,
+                        zIndex = clip.optInt("zIndex", 0).coerceAtLeast(0),
+                        style = TextTimelineEditor.normalizeStyle(
+                            TextStyle(
+                                fontSizeSp = styleJson?.optDouble("fontSizeSp", 32.0)?.toFloat() ?: 32f,
+                                textColorArgb = styleJson?.optInt("textColorArgb", 0xFFFFFFFF.toInt()) ?: 0xFFFFFFFF.toInt(),
+                                backgroundColorArgb = styleJson?.optInt("backgroundColorArgb", 0x00000000) ?: 0x00000000,
+                                bold = styleJson?.optBoolean("bold", true) ?: true,
+                                alignment = enumValueOrDefault(styleJson?.optString("alignment").orEmpty(), TextAlignment.CENTER)
+                            )
+                        ),
+                        transform = TextTimelineEditor.normalizeTransform(
+                            TextTransform(
+                                scale = transformJson?.optDouble("scale", 1.0)?.toFloat() ?: 1f,
+                                positionX = transformJson?.optDouble("positionX", 0.0)?.toFloat() ?: 0f,
+                                positionY = transformJson?.optDouble("positionY", 0.55)?.toFloat() ?: 0.55f,
+                                rotationDegrees = transformJson?.optDouble("rotationDegrees", 0.0)?.toFloat() ?: 0f,
+                                opacity = transformJson?.optDouble("opacity", 1.0)?.toFloat() ?: 1f
+                            )
+                        )
+                    )
+                )
+            }
+        }
+    }
+
     private fun toJson(project: Project): JSONObject {
         val assetArray = JSONArray()
         project.assets.forEach { asset ->
@@ -366,6 +416,36 @@ class ProjectRepository(context: Context) {
             )
         }
 
+        val textClipArray = JSONArray()
+        project.textClips.forEach { clip ->
+            textClipArray.put(
+                JSONObject()
+                    .put("id", clip.id)
+                    .put("text", clip.text)
+                    .put("timelineStartMs", clip.timelineStartMs)
+                    .put("durationMs", clip.durationMs)
+                    .put("zIndex", clip.zIndex)
+                    .put(
+                        "style",
+                        JSONObject()
+                            .put("fontSizeSp", clip.style.fontSizeSp.toDouble())
+                            .put("textColorArgb", clip.style.textColorArgb)
+                            .put("backgroundColorArgb", clip.style.backgroundColorArgb)
+                            .put("bold", clip.style.bold)
+                            .put("alignment", clip.style.alignment.name)
+                    )
+                    .put(
+                        "transform",
+                        JSONObject()
+                            .put("scale", clip.transform.scale.toDouble())
+                            .put("positionX", clip.transform.positionX.toDouble())
+                            .put("positionY", clip.transform.positionY.toDouble())
+                            .put("rotationDegrees", clip.transform.rotationDegrees.toDouble())
+                            .put("opacity", clip.transform.opacity.toDouble())
+                    )
+            )
+        }
+
         return JSONObject()
             .put("schemaVersion", SCHEMA_VERSION)
             .put("id", project.id)
@@ -377,6 +457,7 @@ class ProjectRepository(context: Context) {
             .put("audioClips", audioClipArray)
             .put("overlayAssets", overlayAssetArray)
             .put("overlayClips", overlayClipArray)
+            .put("textClips", textClipArray)
             .put(
                 "canvas",
                 JSONObject()
@@ -387,6 +468,7 @@ class ProjectRepository(context: Context) {
             .put("selectedClipId", project.selectedClipId ?: "")
             .put("selectedAudioClipId", project.selectedAudioClipId ?: "")
             .put("selectedOverlayClipId", project.selectedOverlayClipId ?: "")
+            .put("selectedTextClipId", project.selectedTextClipId ?: "")
             .put("timelineZoom", project.timelineZoom.toDouble())
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
@@ -426,6 +508,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 10
+        private const val SCHEMA_VERSION = 11
     }
 }

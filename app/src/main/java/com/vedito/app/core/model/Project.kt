@@ -140,6 +140,42 @@ data class OverlayClip(
         get() = timelineStartMs + durationMs
 }
 
+enum class TextAlignment {
+    LEFT,
+    CENTER,
+    RIGHT
+}
+
+data class TextStyle(
+    val fontSizeSp: Float = 32f,
+    val textColorArgb: Int = 0xFFFFFFFF.toInt(),
+    val backgroundColorArgb: Int = 0x00000000,
+    val bold: Boolean = true,
+    val alignment: TextAlignment = TextAlignment.CENTER
+)
+
+data class TextTransform(
+    val scale: Float = 1f,
+    val positionX: Float = 0f,
+    val positionY: Float = 0.55f,
+    val rotationDegrees: Float = 0f,
+    val opacity: Float = 1f
+)
+
+data class TextClip(
+    val id: String,
+    val text: String,
+    val timelineStartMs: Int,
+    val durationMs: Int,
+    val zIndex: Int = 0,
+    val style: TextStyle = TextStyle(),
+    val transform: TextTransform = TextTransform()
+) {
+    val timelineEndMs: Int
+        get() = timelineStartMs + durationMs
+}
+
+
 data class AudioAsset(
     val id: String,
     val uri: String,
@@ -175,11 +211,13 @@ data class Project(
     val audioClips: List<AudioClip> = emptyList(),
     val overlayAssets: List<OverlayAsset> = emptyList(),
     val overlayClips: List<OverlayClip> = emptyList(),
+    val textClips: List<TextClip> = emptyList(),
     val canvasSettings: CanvasSettings = CanvasSettings(),
     val playheadMs: Int = 0,
     val selectedClipId: String? = null,
     val selectedAudioClipId: String? = null,
     val selectedOverlayClipId: String? = null,
+    val selectedTextClipId: String? = null,
     val timelineZoom: Float = 1f,
     val timelineViewportStartMs: Int = 0
 ) {
