@@ -196,7 +196,7 @@ class PreviewPlayer(
     override fun onSurfaceTextureAvailable(surfaceTexture: android.graphics.SurfaceTexture, width: Int, height: Int) {
         textureView.alpha = visualTransform.opacity
         applyVideoTransform(width, height)
-        applyChromaKeyPreview()
+        applyRenderPipeline()
         mediaUri?.let(::prepare)
     }
 
@@ -233,7 +233,7 @@ class PreviewPlayer(
                     this@PreviewPlayer.videoHeight = ready.videoHeight
                     textureView.alpha = visualTransform.opacity
                     applyVideoTransform(textureView.width, textureView.height)
-                    applyChromaKeyPreview()
+                    applyRenderPipeline()
                     listener.onReady(uri, durationMs)
                     listener.onPlaybackStateChanged(false)
 
