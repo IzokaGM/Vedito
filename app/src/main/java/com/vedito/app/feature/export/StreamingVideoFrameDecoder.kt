@@ -62,7 +62,8 @@ class StreamingVideoFrameDecoder(
             sourceWidth = sourceWidth,
             sourceHeight = sourceHeight,
             outputWidth = requestedWidth.coerceAtLeast(2),
-            outputHeight = requestedHeight.coerceAtLeast(2)
+            outputHeight = requestedHeight.coerceAtLeast(2),
+            maxDimension = maxOf(requestedWidth, requestedHeight).coerceAtLeast(2)
         )
         width = target.first
         height = target.second

@@ -92,16 +92,16 @@ Completed:
 - Persistence + undo/redo.
 
 Pending:
-- Full production GPU shader stack for source transforms/chroma/color plus LUT/HSL/curves/wheels. Patch 21 moves supported timed post effects/transitions to export GLES.
+- Full production GPU shader stack for source transforms/chroma/color plus LUT/HSL/curves/wheels. Patch 21 moves supported timed post effects/transitions to export GLES; Patch 22 extends output profiles and device-aware encoder selection.
 - Dual-source cross-dissolve and richer transition library.
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 21 adds the production streaming-decoder / hybrid GPU export foundation.**
-Completed through Patch 21:
+**In progress — Patch 22 adds high-resolution profiles, codec controls and device-aware export preflight on top of the Patch 21 streaming/GPU foundation.**
+Completed through Patch 22:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
-- 720p/1080p @ 30fps presets + hardware surface video encoding.
+- 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
 - Shared visual timing parity for trim/speed/reverse/freeze.
 - Main visual/keyframe/stabilization/mask/chroma/color/effects/transition + overlay/text/caption frame composition.
 - Source-video audio + overlapping independent audio-track mix.
@@ -111,11 +111,13 @@ Completed through Patch 21:
 - Forward/freeze MediaCodec streaming video decode with bounded decoder pool + automatic random-access fallback.
 - Encoder-surface GLES post processing for supported effects/transitions plus final overlay alpha composition.
 - Reused decoded bitmaps and GL texture storage to reduce per-frame allocation churn.
+- MediaCodec size/rate/surface preflight, effective bitrate clamping and estimated MP4 size before destination selection.
+- High-resolution main-source decode path up to 3840px while overlay/static decode remains bounded for memory control.
 
 Pending:
 - Full source-texture GPU graph for chroma/color/transform/masks and production reverse decode/cache.
-- H.265, 2K/4K where supported, FPS/bitrate controls.
-- Recovery/resume, thermal/memory/storage preflight and long-project optimization.
+- Arbitrary/manual bitrate controls beyond the safe Patch 22 planner.
+- Recovery/resume, deeper thermal/memory/storage destination preflight and long-project optimization.
 - Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
 
 ## Stage 8 — AI suite
@@ -204,14 +206,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Android-free audio mix plan, seekable normalized PCM decode cache and deterministic offline mixer.
   - Cancellation-aware audio prep, bounded mux startup, monotonic PTS and encoder stall hardening.
   - Project schema remains v18; no duplicate saved audio state introduced.
-- **Patch 21:** Production Decoder / GPU Compositor Performance Foundation — current patch.
+- **Patch 21:** Production Decoder / GPU Compositor Performance Foundation — locked after CI/device verification.
   - Forward/freeze main video + video overlays prefer bounded MediaCodec streaming decode.
   - Reverse/unsupported decoder paths retain correctness-first random-access fallback.
   - LRU decoder pool + reusable decoded/output bitmaps reduce long-project allocation pressure.
   - Hybrid base/overlay export planes move supported timed effects/transitions + final alpha composition onto the encoder GLES surface.
   - GL texture storage is reused across frames; schema remains v18.
-- **Patch 22:** High-Resolution / Codec Controls & Export Preflight Foundation — next.
-- **Patch 23+:** advanced color/audio/text, production reverse/GPU graph, AI/templates/cloud and release hardening.
+- **Patch 22:** High-Resolution / Codec Controls & Export Preflight Foundation — current patch.
+  - 720p/1080p/1440p/2160p output profiles with 24/30/60fps.
+  - H.264 AVC + H.265 HEVC selection with deterministic profile-aware bitrate planning.
+  - MediaCodec surface/size/rate preflight, hardware-first exact encoder selection and safe bitrate clamping.
+  - Preflight summary includes estimated output size and compatibility/performance warnings before SAF destination selection.
+  - Main-source high-resolution decode may reach 3840px while overlay/static decode remains bounded; schema stays v18.
+- **Patch 23:** Full GPU Source Graph / Reverse Decode Cache Foundation — next.
+- **Patch 24+:** advanced color/audio/text, AI/templates/cloud and release hardening.
 
 ## Release gates
 Before locking a major stage:

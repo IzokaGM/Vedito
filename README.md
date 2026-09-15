@@ -1,49 +1,54 @@
-# Vedito Patch 21 — Production Decoder / GPU Compositor Performance Foundation
+# Vedito Patch 22 — High-Resolution / Codec Controls & Export Preflight Foundation
 
-Version: **0.21.0** (`versionCode 21`)  
+Version: **0.22.0** (`versionCode 22`)  
 Package: **`com.vedito.app`**  
-Project persistence schema: **v18** (unchanged; Patch 21 adds no saved project fields)
+Project persistence schema: **v18** (unchanged; export settings are session-only)
 
-## Patch 21
-Patch 21 replaces the expensive frame-by-frame export extraction path for normal forward playback with a bounded streaming decode pipeline and moves supported timed post-processing onto the encoder GPU surface.
+## What Patch 22 adds
 
-### Streaming video decode
-- New `StreamingVideoFrameDecoder` uses `MediaExtractor + MediaCodec` with a bounded `ImageReader` surface.
-- Normal forward main clips and video overlays prefer sequential hardware decode.
-- Freeze clips reuse the held decoded frame instead of extracting it again for every output frame.
-- Reverse clips intentionally use the correctness-first random-access fallback until a dedicated reverse frame cache/decoder lands.
-- Unsupported decoder/surface combinations automatically fall back to `MediaMetadataRetriever` rather than aborting the export.
-- Decoder pool is LRU-bounded to avoid pinning an unbounded number of hardware decoders in long/multi-overlay projects.
-- Decoded YUV frames reuse one RGB bitmap per active stream, reducing frame-allocation churn.
+### Export profiles
+- Resolution choices: **720p / 1080p / 1440p (2K) / 2160p (4K)**.
+- Frame-rate choices: **24 / 30 / 60 fps**.
+- Codec choices: **H.264/AVC** or **H.265/HEVC**.
+- Deterministic bitrate planning scales by resolution, FPS and codec efficiency.
+- HEVC uses a lower target bitrate than H.264 for the same profile.
+- Export plan exposes a conservative estimated MP4 size before the file picker opens.
 
-### Hybrid GPU compositor
-- `SoftwareFrameComposer` now emits reusable **base + overlay planes** instead of one repeatedly allocated final frame.
-- Warm/Cool/Dream/Vignette timed effects and Fade/Flash/Wipe transitions can run in the encoder EGL/GLES shader.
-- Grain stays on the CPU fallback in Patch 21 to preserve the existing sparse-grain look.
-- Mask occlusion, overlay media, text and captions remain above the post-processed base plane, preserving the existing visual layer order.
-- `CodecInputSurface` keeps GL texture storage alive and uses sub-image uploads after the first frame instead of reallocating texture storage every frame.
-- The final overlay plane is alpha-composited in GLES immediately before the H.264 encoder surface swap.
+### Device-aware encoder preflight
+- New `ExportCapabilityProbe` enumerates Android MediaCodec encoders for the selected MIME type.
+- Verifies encoder-surface support, output size and size+frame-rate capability.
+- Prefers hardware acceleration when available.
+- Clamps requested bitrate into the chosen encoder's advertised range rather than sending an invalid configuration.
+- Blocks unsupported profiles before the user chooses a save destination and explains whether the limitation is codec, resolution or FPS.
+- Re-runs capability selection immediately before export so a stale UI result is never trusted as the final gate.
 
-### Ownership / compatibility
-- `FrameCompositionBuilder` remains the canonical visual state resolver.
-- `AudioMixPlan` / `OfflineAudioMixer` remain the canonical Patch 20 audio path.
-- No duplicate preview/export project state was added.
-- Project schema stays **v18**.
+### Export engine integration
+- `VideoExportEngine` now creates the exact preflight-selected encoder by codec name.
+- MediaFormat video MIME follows the selected AVC/HEVC codec.
+- Existing Patch 20 real AAC mixer and Patch 21 hybrid GPU/post pipeline remain intact.
+- Main high-resolution video decode can scale up to 3840 px for 4K output; overlay/static-layer decode remains bounded to reduce memory pressure.
+
+### Export UX
+- Native stepped flow: resolution → FPS → codec → preflight summary → save destination.
+- Preflight shows dimensions, FPS, codec, effective video bitrate, AAC bitrate, estimated file size and chosen encoder.
+- Warns for 4K, 60 fps, HEVC compatibility and existing compositor/audio fallback cases.
+- Generated filename includes profile, FPS and codec.
 
 ## Current limits
-- Chroma-key pixel removal and base color matrix are still CPU-backed in the export compositor; a future full source-texture GPU graph can move these stages without changing the project model.
-- Reverse video still uses random-access extraction and can be slower on long/high-resolution clips.
-- MediaCodec → YUV ImageReader support varies by device; Vedito falls back automatically when the streaming surface cannot be negotiated.
-- H.265, 2K/4K, custom FPS/bitrate, export resume/recovery and full thermal/storage preflight remain future work.
+- 4K/60 support is **device-dependent**; unsupported encoder profiles are blocked by preflight.
+- Preflight estimates output size but cannot guarantee free space at an arbitrary SAF/cloud destination before that destination is chosen.
+- Long 4K exports can still thermal-throttle or hit memory pressure even when MediaCodec advertises the profile.
+- Chroma/color base processing and reverse-video random access are still not the final all-GPU production path.
+- No manual arbitrary bitrate slider yet; Patch 22 uses safe deterministic bitrate presets.
+- Export resume/recovery is still pending.
 
 ## Acceptance path
-1. Export a normal forward project at 720p and 1080p; verify image + audio sync.
-2. Test a 0.5× and 2× forward clip; verify repeated/skipped source frames remain visually aligned.
-3. Add a freeze clip; verify the held frame remains stable.
-4. Add a reverse clip; verify correctness even though that section can export slower.
-5. Add Warm/Cool/Dream/Vignette effects and Fade/Flash/Wipe transitions; compare preview/export behavior.
-6. Add overlays, text/captions and a mask; verify they remain above the base effect layer.
-7. Cancel during a long export; verify no broken partial MP4 remains.
-8. Reopen the project; verify Patch 1–20 state is intact.
+1. Open Export and verify 720p/1080p/1440p/4K, 24/30/60fps and H.264/HEVC choices appear.
+2. Select 1080p/30/H.264 and confirm preflight names an encoder and allows save.
+3. Export and verify audible AAC audio + visual parity from Patch 20/21 remain intact.
+4. Try HEVC; supported devices should export H.265 MP4, unsupported devices should be blocked before destination selection.
+5. Try 4K and/or 60fps; verify device capability determines whether the profile can continue.
+6. Cancel a long export; verify no broken partial MP4 remains.
+7. Reopen the project; verify all Patch 1–21 persisted state is intact.
 
 No workflow `.yml/.yaml` files are included in this patch ZIP.

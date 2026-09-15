@@ -195,7 +195,7 @@ class SoftwareFrameComposer(
     }
 
     private fun scaleStaticBitmap(bitmap: Bitmap): Bitmap {
-        val target = FrameAccessPlanner.decodeTarget(bitmap.width, bitmap.height, plan.width, plan.height)
+        val target = FrameAccessPlanner.decodeTarget(bitmap.width, bitmap.height, plan.width, plan.height, maxDimension = 2_560)
         if (target.first == bitmap.width && target.second == bitmap.height) return bitmap
         return Bitmap.createScaledBitmap(bitmap, target.first, target.second, true)
     }

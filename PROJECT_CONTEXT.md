@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.21.0 / versionCode 21**
+- Current patch: **0.22.0 / versionCode 22**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -116,6 +116,7 @@ Important modules:
 - Patch 19: first real off-screen MP4 export foundation. H.264 video is encoded from a deterministic composed frame pipeline that reuses timing/keyframe/stabilization/mask/chroma/color/effect/transition plus overlay/text/caption project state. 720p/1080p @ 30fps presets, AAC container track, progress/cancel/error handling and SAF save flow are integrated.
 - Major Patch 20: real audible export mixer. Main-video source sound plus independent audio tracks now render to stereo AAC with timeline sync, volume/mute/fades, multi-track overlap and lightweight pitch-preserving forward-speed handling. Export cancellation/mux/encoder lifecycle is hardened.
 - Patch 21: bounded MediaCodec streaming decode for forward/freeze main video and video overlays with random-access fallback, reusable frame/texture storage, hybrid base/overlay composition, and encoder-surface GLES post effects/transitions.
+- Patch 22: 720p/1080p/1440p/4K export profiles, 24/30/60fps, H.264/HEVC codec selection, deterministic bitrate/file-size planning, MediaCodec size/rate/surface preflight, exact encoder selection and high-resolution main-source decode support.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -176,11 +177,20 @@ Important modules:
 - Project persistence schema stays v18; Patch 21 adds execution infrastructure only.
 - Chroma/color base processing is still CPU-backed, reverse video remains random-access, and streaming decoder surface support remains device-dependent with automatic fallback.
 
+## Patch 22 behavior/limits
+- `ExportSettings` now selects 720p/1080p/1440p/2160p, 24/30/60fps and `ExportVideoCodec` AVC/HEVC.
+- `ExportPlanner` is Android-free and canonical for output dimensions, frame count, bitrate and conservative estimated output size.
+- `ExportCapabilityProbe` checks Android MediaCodec encoder MIME, surface-input color format, exact size and size+rate support, prefers hardware acceleration and clamps bitrate to the encoder-advertised range.
+- `VideoExportEngine` repeats preflight immediately before export and creates the chosen codec by name; unsupported profiles fail before encoding instead of relying on a late configure crash.
+- 4K main-source decoding can reach 3840px; overlays/static media remain bounded around 2560px to avoid multiplying memory pressure.
+- 4K/60 is capability-driven, not guaranteed. Preflight estimates output size but cannot prove free space for every SAF/cloud destination. Thermal throttling and long-project memory pressure remain possible.
+- Project schema remains v18; export choices are not persisted into project JSON.
+
 ## Next milestone
-**Patch 22 — High-Resolution / Codec Controls & Export Preflight Foundation**
-- capability-driven H.265/2K/4K where the device supports it,
-- user-facing FPS/bitrate controls with safe presets,
-- memory/thermal/storage preflight before long exports,
-- preserve the existing `FrameCompositionBuilder` + `AudioMixPlan` + Patch 21 execution contracts.
+**Patch 23 — Full GPU Source Graph / Reverse Decode Cache Foundation**
+- move chroma/color/transform/mask source processing toward one GPU graph,
+- add bounded reverse-frame cache/decoder strategy instead of per-frame random access,
+- continue preview/export parity while reducing CPU bitmap pressure,
+- keep Patch 20 audio and Patch 22 encoder-preflight contracts intact.
 
 See `WORKPLAN.md` for the full roadmap.

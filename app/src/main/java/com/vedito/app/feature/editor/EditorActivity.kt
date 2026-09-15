@@ -65,9 +65,11 @@ import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.caption.SrtCodec
 import com.vedito.app.core.effect.EffectComposition
 import com.vedito.app.core.effect.EffectTimelineEditor
+import com.vedito.app.core.export.ExportPlanner
 import com.vedito.app.core.export.ExportPreset
 import com.vedito.app.core.export.ExportSettings
 import com.vedito.app.core.export.ExportSupport
+import com.vedito.app.core.export.ExportVideoCodec
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.tracking.MotionTrackingEngine
@@ -84,6 +86,7 @@ import com.vedito.app.core.visual.MaskChromaComposition
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
+import com.vedito.app.feature.export.ExportCapabilityProbe
 import com.vedito.app.feature.export.VideoExportEngine
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.color.ColorGradeToolbarView
@@ -3156,29 +3159,97 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             return
         }
         saveProject()
-        val report = ExportSupport.inspect(project)
-        if (!report.canExport) {
+        if (!ExportSupport.inspect(project).canExport) {
             Toast.makeText(this, "Add a video clip before exporting", Toast.LENGTH_SHORT).show()
             return
         }
+        showExportResolutionOptions()
+    }
+
+    private fun showExportResolutionOptions() {
         val presets = ExportPreset.values()
         AlertDialog.Builder(this)
-            .setTitle("Export video")
+            .setTitle("Export resolution")
             .setItems(presets.map { it.label }.toTypedArray()) { _, which ->
-                val settings = ExportSettings(preset = presets[which])
-                if (report.warnings.isEmpty()) {
-                    launchVideoExportDocument(settings)
-                } else {
-                    AlertDialog.Builder(this)
-                        .setTitle("Export notes")
-                        .setMessage(report.warnings.joinToString("\n\n"))
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Continue") { _, _ -> launchVideoExportDocument(settings) }
-                        .show()
-                }
+                showExportFrameRateOptions(presets[which])
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun showExportFrameRateOptions(preset: ExportPreset) {
+        val frameRates = intArrayOf(24, 30, 60)
+        AlertDialog.Builder(this)
+            .setTitle("${preset.label} frame rate")
+            .setItems(frameRates.map { "$it fps" }.toTypedArray()) { _, which ->
+                showExportCodecOptions(preset, frameRates[which])
+            }
+            .setNegativeButton("Back") { _, _ -> showExportResolutionOptions() }
+            .show()
+    }
+
+    private fun showExportCodecOptions(preset: ExportPreset, frameRate: Int) {
+        val codecs = ExportVideoCodec.values()
+        AlertDialog.Builder(this)
+            .setTitle("Video codec")
+            .setItems(codecs.map { it.label }.toTypedArray()) { _, which ->
+                showExportPreflight(ExportSettings(preset = preset, frameRate = frameRate, videoCodec = codecs[which]))
+            }
+            .setNegativeButton("Back") { _, _ -> showExportFrameRateOptions(preset) }
+            .show()
+    }
+
+    private fun showExportPreflight(settings: ExportSettings) {
+        saveProject()
+        val support = ExportSupport.inspect(project, settings)
+        val requestedPlan = ExportPlanner.plan(project, settings)
+        val device = ExportCapabilityProbe.inspect(requestedPlan)
+        val effectivePlan = requestedPlan.copy(
+            videoBitrate = device.selection?.effectiveBitrate ?: requestedPlan.videoBitrate
+        )
+        val warnings = support.warnings + device.warnings
+        val message = buildString {
+            append("${effectivePlan.width}×${effectivePlan.height} · ${effectivePlan.frameRate} fps\n")
+            append("${effectivePlan.videoCodec.label}\n")
+            append("Video ${formatExportMbps(effectivePlan.videoBitrate)} Mbps · AAC ${effectivePlan.audioBitrate / 1_000} kbps\n")
+            append("Estimated file ${formatExportBytes(effectivePlan.estimatedOutputBytes)}")
+            device.selection?.let { selection ->
+                append("\nEncoder: ${selection.codecName}")
+                append(if (selection.hardwareAccelerated) " · hardware" else " · software")
+            }
+            if (!device.canEncode) {
+                append("\n\nCannot export this profile on this device.\n")
+                append(device.failureReason ?: "No compatible encoder was found.")
+            }
+            if (warnings.isNotEmpty()) {
+                append("\n\nPreflight notes:\n")
+                append(warnings.joinToString("\n") { "• $it" })
+            }
+        }
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle("Export preflight")
+            .setMessage(message)
+            .setNegativeButton("Cancel", null)
+        if (support.canExport && device.canEncode) {
+            builder
+                .setNeutralButton("Change") { _, _ -> showExportOptions() }
+                .setPositiveButton("Save MP4") { _, _ -> launchVideoExportDocument(settings) }
+        } else {
+            builder.setPositiveButton("Change settings") { _, _ -> showExportOptions() }
+        }
+        builder.show()
+    }
+
+    private fun formatExportMbps(bitrate: Int): String {
+        val mbps = bitrate / 1_000_000f
+        return if (mbps >= 10f) String.format("%.0f", mbps) else String.format("%.1f", mbps)
+    }
+
+    private fun formatExportBytes(bytes: Long): String {
+        if (bytes <= 0L) return "0 MB"
+        val mib = bytes / (1024f * 1024f)
+        return if (mib >= 1024f) String.format("%.2f GB", mib / 1024f) else String.format("%.0f MB", mib)
     }
 
     private fun launchVideoExportDocument(settings: ExportSettings) {
@@ -3188,7 +3259,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             .replace(Regex("[^A-Za-z0-9._ -]"), "_")
             .trim()
             .ifBlank { "vedito" }
-        exportVideoPicker.launch("$safeTitle-${settings.preset.name.lowercase()}.mp4")
+        exportVideoPicker.launch("$safeTitle-${settings.preset.name.lowercase()}-${settings.frameRate}fps-${settings.videoCodec.name.lowercase()}.mp4")
     }
 
     private fun startVideoExport(uri: Uri, settings: ExportSettings) {
@@ -3213,7 +3284,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 val seconds = (elapsedMs / 1_000f).coerceAtLeast(0f)
                 AlertDialog.Builder(this@EditorActivity)
                     .setTitle("Export complete")
-                    .setMessage("${plan.width}×${plan.height} · ${plan.frameRate} fps · ${String.format("%.1f", seconds)}s render time")
+                    .setMessage("${plan.width}×${plan.height} · ${plan.frameRate} fps · ${plan.videoCodec.label.substringBefore('·').trim()} · ${String.format("%.1f", seconds)}s render time")
                     .setNegativeButton("Done", null)
                     .setPositiveButton("Open") { _, _ ->
                         val intent = Intent(Intent.ACTION_VIEW)

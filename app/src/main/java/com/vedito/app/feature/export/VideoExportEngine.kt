@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /**
- * Patch 21 production export pipeline.
+ * Patch 22 production export pipeline.
  * Video uses bounded streaming decode plus a hybrid CPU/GPU compositor; mixed PCM remains deterministic.
  */
 class VideoExportEngine(
@@ -40,14 +40,21 @@ class VideoExportEngine(
 
     fun export(project: Project, outputUri: Uri, settings: ExportSettings, listener: Listener): Boolean {
         if (running) return false
-        val plan = ExportPlanner.plan(project, settings)
-        if (plan.frameCount <= 0 || plan.durationMs <= 0) {
+        val requestedPlan = ExportPlanner.plan(project, settings)
+        if (requestedPlan.frameCount <= 0 || requestedPlan.durationMs <= 0) {
             listener.onError("Project has no video duration to export", null)
             return false
         }
+        val devicePreflight = ExportCapabilityProbe.inspect(requestedPlan)
+        val selection = devicePreflight.selection
+        if (!devicePreflight.canEncode || selection == null) {
+            listener.onError(devicePreflight.failureReason ?: "No compatible video encoder is available for this export profile", null)
+            return false
+        }
+        val plan = requestedPlan.copy(videoBitrate = selection.effectiveBitrate)
         running = true
         cancelRequested.set(false)
-        worker = Thread({ runExport(project, outputUri, plan, listener) }, "VeditoExport").apply { start() }
+        worker = Thread({ runExport(project, outputUri, plan, selection, listener) }, "VeditoExport").apply { start() }
         return true
     }
 
@@ -62,7 +69,7 @@ class VideoExportEngine(
         cancel()
     }
 
-    private fun runExport(project: Project, outputUri: Uri, plan: ExportPlan, listener: Listener) {
+    private fun runExport(project: Project, outputUri: Uri, plan: ExportPlan, selection: VideoEncoderSelection, listener: Listener) {
         val startedAt = System.currentTimeMillis()
         var pfd: android.os.ParcelFileDescriptor? = null
         var videoCodec: MediaCodec? = null
@@ -101,13 +108,13 @@ class VideoExportEngine(
             }
             checkCancelled()
 
-            val videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, plan.width, plan.height).apply {
+            val videoFormat = MediaFormat.createVideoFormat(plan.videoMimeType, plan.width, plan.height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, plan.videoBitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, plan.frameRate)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
-            val activeVideoCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).apply {
+            val activeVideoCodec = MediaCodec.createByCodecName(selection.codecName).apply {
                 configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             }
             videoCodec = activeVideoCodec
@@ -350,7 +357,7 @@ class VideoExportEngine(
     private fun humanReadableError(t: Throwable?): String {
         val message = t?.message.orEmpty()
         return when {
-            message.contains("codec", ignoreCase = true) -> "This device could not complete hardware encoding. Try 720p or a shorter project."
+            message.contains("codec", ignoreCase = true) || message.contains("encoder", ignoreCase = true) -> "This device could not complete the selected encode profile. Try H.264, a lower resolution, 30 fps, or a shorter project."
             message.contains("space", ignoreCase = true) -> "Not enough storage space to finish export."
             message.contains("destination", ignoreCase = true) -> "Vedito lost access to the selected save location. Choose another destination."
             message.isNotBlank() -> message

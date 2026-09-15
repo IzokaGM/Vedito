@@ -118,11 +118,13 @@ class VideoFrameSourcePool(
     ): StreamEntry {
         streaming[key]?.let { return it }
         trimStreamingPool(forceOneSlot = true)
+        val decodeCap = if (key.startsWith("main:") && maxOf(plan.width, plan.height) > 2_560) 3_840 else 2_560
         val target = FrameAccessPlanner.decodeTarget(
             sourceWidth = sourceWidth.coerceAtLeast(plan.width),
             sourceHeight = sourceHeight.coerceAtLeast(plan.height),
             outputWidth = plan.width,
-            outputHeight = plan.height
+            outputHeight = plan.height,
+            maxDimension = decodeCap
         )
         val entry = StreamEntry(
             decoder = StreamingVideoFrameDecoder(
@@ -174,11 +176,13 @@ class VideoFrameSourcePool(
         val timeUs = sourcePositionMs.coerceAtLeast(0).toLong() * 1_000L
         val frame = runCatching {
             if (Build.VERSION.SDK_INT >= 27 && sourceWidth > 0 && sourceHeight > 0) {
+                val decodeCap = if (key.startsWith("main:") && maxOf(plan.width, plan.height) > 2_560) 3_840 else 2_560
                 val target = FrameAccessPlanner.decodeTarget(
                     sourceWidth = sourceWidth,
                     sourceHeight = sourceHeight,
                     outputWidth = plan.width,
-                    outputHeight = plan.height
+                    outputHeight = plan.height,
+                    maxDimension = decodeCap
                 )
                 retriever.getScaledFrameAtTime(
                     timeUs,

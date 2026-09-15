@@ -29,11 +29,18 @@ object FrameAccessPlanner {
         return targetUs - lastTargetUs > maxForwardGapUs
     }
 
-    fun decodeTarget(sourceWidth: Int, sourceHeight: Int, outputWidth: Int, outputHeight: Int): Pair<Int, Int> {
+    fun decodeTarget(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        outputWidth: Int,
+        outputHeight: Int,
+        maxDimension: Int = 3_840
+    ): Pair<Int, Int> {
         val safeSourceW = sourceWidth.coerceAtLeast(2)
         val safeSourceH = sourceHeight.coerceAtLeast(2)
-        val maxW = (outputWidth * 1.35f).toInt().coerceIn(2, 2_560)
-        val maxH = (outputHeight * 1.35f).toInt().coerceIn(2, 2_560)
+        val cap = maxDimension.coerceIn(2, 3_840)
+        val maxW = (outputWidth * 1.35f).toInt().coerceIn(2, cap)
+        val maxH = (outputHeight * 1.35f).toInt().coerceIn(2, cap)
         val scale = minOf(1f, maxW.toFloat() / safeSourceW, maxH.toFloat() / safeSourceH)
         val width = ((safeSourceW * scale).toInt().coerceAtLeast(2) / 2) * 2
         val height = ((safeSourceH * scale).toInt().coerceAtLeast(2) / 2) * 2
