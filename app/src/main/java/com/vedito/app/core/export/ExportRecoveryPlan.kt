@@ -192,6 +192,6 @@ object ExportRecoveryPlanner {
         return java.lang.Long.toUnsignedString(hash, 16).padStart(16, '0')
     }
 
-    private const val RENDER_FINGERPRINT_REVISION = "vedito-render-p24-r1"
+    private const val RENDER_FINGERPRINT_REVISION = "vedito-render-p25-r1"
     private const val MIB = 1024L * 1024L
 }

@@ -133,13 +133,16 @@ class SoftwareFrameComposer(
 
                     if (!sourceRenderedOnGpu) {
                         val processed = if (frame.chromaKey.enabled) applyChroma(bitmap, frame.chromaKey) else bitmap
+                        val advancedColor = ColorGradeEngine.hasAdvancedAdjustments(frame.colorGrade)
+                        val graded = if (advancedColor) applyColorGrade(processed, frame.colorGrade) else processed
                         val framePaint = Paint(paint).apply {
                             alpha = (frame.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
-                            if (!ColorGradeEngine.isNeutral(frame.colorGrade)) {
+                            if (!advancedColor && !ColorGradeEngine.isBaseNeutral(frame.colorGrade)) {
                                 colorFilter = ColorMatrixColorFilter(ColorMatrix(ColorGradeEngine.colorMatrix(frame.colorGrade)))
                             }
                         }
-                        drawVisualBitmap(baseCanvas, processed, frame.transform, framePaint, 0.42f)
+                        drawVisualBitmap(baseCanvas, graded, frame.transform, framePaint, 0.42f)
+                        if (graded !== processed) graded.recycle()
                         if (processed !== bitmap) processed.recycle()
                         decoded.close()
                     }
@@ -321,6 +324,18 @@ class SoftwareFrameComposer(
             MaskShape.RECTANGLE -> target.addRoundRect(bounds, 8f * dpScale, 8f * dpScale, Path.Direction.CW)
             MaskShape.ELLIPSE -> target.addOval(bounds, Path.Direction.CW)
         }
+    }
+
+    private fun applyColorGrade(source: Bitmap, spec: com.vedito.app.core.model.ColorGradeSpec): Bitmap {
+        val transformed = source.copy(Bitmap.Config.ARGB_8888, true)
+        val width = transformed.width
+        val height = transformed.height
+        val pixels = IntArray(width * height)
+        transformed.getPixels(pixels, 0, width, 0, 0, width, height)
+        val prepared = ColorGradeEngine.prepare(spec)
+        for (index in pixels.indices) pixels[index] = prepared.transformArgb(pixels[index])
+        transformed.setPixels(pixels, 0, width, 0, 0, width, height)
+        return transformed
     }
 
     private fun applyChroma(source: Bitmap, specInput: com.vedito.app.core.model.ChromaKeySpec): Bitmap {

@@ -167,13 +167,50 @@ data class ChromaKeySpec(
 )
 
 
+data class ToneCurveSpec(
+    val black: Float = 0f,
+    val shadows: Float = 0.25f,
+    val midtones: Float = 0.50f,
+    val highlights: Float = 0.75f,
+    val white: Float = 1f
+)
+
+data class RgbCurveSpec(
+    val master: ToneCurveSpec = ToneCurveSpec(),
+    val red: ToneCurveSpec = ToneCurveSpec(),
+    val green: ToneCurveSpec = ToneCurveSpec(),
+    val blue: ToneCurveSpec = ToneCurveSpec()
+)
+
+data class HslAdjustSpec(
+    val hueDegrees: Float = 0f,
+    val saturation: Float = 0f,
+    val luminance: Float = 0f
+)
+
+enum class ColorLutPreset {
+    NONE,
+    CINEMATIC,
+    TEAL_ORANGE,
+    FILM_FADE,
+    CLEAN_POP
+}
+
+data class ColorLutSpec(
+    val preset: ColorLutPreset = ColorLutPreset.NONE,
+    val intensity: Float = 1f
+)
+
 data class ColorGradeSpec(
     val exposure: Float = 0f,
     val contrast: Float = 0f,
     val saturation: Float = 0f,
     val temperature: Float = 0f,
     val tint: Float = 0f,
-    val fade: Float = 0f
+    val fade: Float = 0f,
+    val curves: RgbCurveSpec = RgbCurveSpec(),
+    val hsl: HslAdjustSpec = HslAdjustSpec(),
+    val lut: ColorLutSpec = ColorLutSpec()
 )
 
 

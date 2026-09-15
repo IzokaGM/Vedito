@@ -39,6 +39,15 @@ data class GpuSourceGraphPlan(
     val chromaSoftness: Float,
     val chromaSpill: Float,
     val colorMatrix: FloatArray,
+    val masterCurve: FloatArray,
+    val redCurve: FloatArray,
+    val greenCurve: FloatArray,
+    val blueCurve: FloatArray,
+    val hslHueDegrees: Float,
+    val hslSaturation: Float,
+    val hslLuminance: Float,
+    val lutCode: Int,
+    val lutIntensity: Float,
     val maskShapeCode: Int,
     val maskCenterX: Float,
     val maskCenterY: Float,
@@ -73,6 +82,15 @@ data class GpuSourceGraphPlan(
             chromaSoftness = 0.10f,
             chromaSpill = 0.15f,
             colorMatrix = identityColorMatrix(),
+            masterCurve = identityCurve(),
+            redCurve = identityCurve(),
+            greenCurve = identityCurve(),
+            blueCurve = identityCurve(),
+            hslHueDegrees = 0f,
+            hslSaturation = 0f,
+            hslLuminance = 0f,
+            lutCode = 0,
+            lutIntensity = 1f,
             maskShapeCode = 0,
             maskCenterX = 0.5f,
             maskCenterY = 0.5f,
@@ -84,6 +102,8 @@ data class GpuSourceGraphPlan(
             backgroundG = channel(backgroundArgb, 8),
             backgroundB = channel(backgroundArgb, 0)
         )
+
+        private fun identityCurve(): FloatArray = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 
         private fun identityColorMatrix(): FloatArray = floatArrayOf(
             1f, 0f, 0f, 0f, 0f,
@@ -157,6 +177,15 @@ object GpuSourceGraphPlanner {
             chromaSoftness = chroma.softness,
             chromaSpill = chroma.spill,
             colorMatrix = colorMatrix,
+            masterCurve = ColorGradeEngine.curveValues(frame.colorGrade.curves.master),
+            redCurve = ColorGradeEngine.curveValues(frame.colorGrade.curves.red),
+            greenCurve = ColorGradeEngine.curveValues(frame.colorGrade.curves.green),
+            blueCurve = ColorGradeEngine.curveValues(frame.colorGrade.curves.blue),
+            hslHueDegrees = frame.colorGrade.hsl.hueDegrees,
+            hslSaturation = frame.colorGrade.hsl.saturation,
+            hslLuminance = frame.colorGrade.hsl.luminance,
+            lutCode = ColorGradeEngine.lutCode(frame.colorGrade.lut.preset),
+            lutIntensity = frame.colorGrade.lut.intensity,
             maskShapeCode = when (mask.shape) {
                 MaskShape.NONE -> 0
                 MaskShape.RECTANGLE -> 1

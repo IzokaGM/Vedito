@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.24.0 / versionCode 24**
+- Current patch: **0.25.0 / versionCode 25**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -63,10 +63,12 @@ Current external CI concept:
 - `CaptionComposition` / `CaptionTimelineEditor` / `SrtCodec`: renderer-independent caption resolution, timing edits and SRT interchange.
 - `EffectClip`: independent timed effect segment with kind/intensity.
 - `EffectComposition`: renderer-independent active-effect and clip-boundary transition envelope resolver.
+- `ColorGradeSpec`: base color matrix controls plus independent Master/R/G/B five-anchor curves, global HSL state and built-in LUT-look state.
+- `ColorGradeEngine`: canonical normalize/matrix/curve/HSL/LUT evaluator shared by preview/export/software fallback.
 - `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v18.
+- `core/projects/ProjectRepository.kt` — persistence, schema v19.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -125,6 +127,7 @@ Important modules:
 - Patch 22: 720p/1080p/1440p/4K export profiles, 24/30/60fps, H.264/HEVC codec selection, deterministic bitrate/file-size planning, MediaCodec size/rate/surface preflight, exact encoder selection and high-resolution main-source decode support.
 - Patch 23: encoder-surface GPU main-source graph for transform/chroma/color/mask, retained decoder leases, and bounded MediaCodec reverse GOP-tail cache with random-access fallback.
 - Patch 24: frame-boundary video checkpoints, resumable cache-backed export sessions, single full-length AAC checkpoint, no-reencode final remux, resume-aware storage preflight, thermal checkpoint backoff and per-segment decoder/GPU reacquisition.
+- Patch 25: schema v19 advanced color state with five-anchor RGB curves, global HSL, built-in LUT looks/intensity, API 33+ unified RuntimeShader preview, GLES export parity, CPU fallback parity and recovery fingerprint invalidation.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -205,7 +208,7 @@ Important modules:
 - Decoder YUV→RGB conversion still occurs on CPU before source texture upload; a future OES/SurfaceTexture path may remove that final conversion without changing canonical render state.
 - Project schema remains v18; Patch 23 introduces no new saved project state.
 
-## Patch 24 behavior/limits
+## Patch 24 recovery behavior/limits
 - `ExportRecoveryPlanner` splits video on exact frame boundaries into ~18s standard, ~12s heavy or ~8s extreme checkpoints and includes a render-ABI salt in its deterministic recovery fingerprint.
 - Recovery fingerprint depends on render-relevant project state, effective export plan and exact encoder; playhead/selection/autosave timestamps do not invalidate a valid render.
 - `ExportRecoveryStore` persists finalized video checkpoints + one full AAC checkpoint under app cache. `.part` files are never resumed and stale sessions are pruned after seven days.
@@ -216,10 +219,16 @@ Important modules:
 - Recovery cache is not durable storage and may be cleared by Android. Export is not yet a foreground service/WorkManager job, so process death loses the active segment but finalized checkpoints can be reused.
 - Project schema remains v18; Patch 24 adds no saved editor state.
 
+## Patch 25 behavior/limits
+- Canonical color order is base matrix → Master/R/G/B five-anchor curves → global HSL → built-in LUT look.
+- The toolbar currently cycles deterministic curve presets; the stored model already supports independent curve anchors for a future graph editor.
+- Built-in LUT looks are deterministic/procedural and require no external asset dependency. External `.cube` import is still pending.
+- API 33+ preview uses one RuntimeShader for chroma + the full color pipeline; API 31–32 retain legacy matrix-only preview while export still renders all saved advanced state.
+- Encoder GLES and software fallback both consume the same canonical `ColorGradeSpec`.
+- Project persistence is schema v19. Older projects without advanced fields load neutral defaults.
+- Export recovery render salt is bumped to `vedito-render-p25-r1`, invalidating stale Patch 24 checkpoints after the pixel pipeline change.
+
 ## Next milestone
-**Patch 25 — Advanced Color / LUT / Curves Foundation**
-- extend the Patch 18 color domain with renderer-independent curves/HSL/LUT state,
-- preview/export parity through the existing GPU source graph with correctness fallbacks,
-- persistence/undo-redo without duplicating renderer-only state.
+**Patch 26 — Advanced Audio / Text Expansion Foundation**
 
 See `WORKPLAN.md` for the full roadmap.

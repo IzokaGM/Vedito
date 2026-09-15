@@ -289,31 +289,57 @@ class PreviewPlayer(
         if (Build.VERSION.SDK_INT < 31) return
 
         runCatching {
-            var composed: RenderEffect? = null
             val safeColor = ColorGradeEngine.normalize(colorGrade)
-            if (!ColorGradeEngine.isNeutral(safeColor)) {
-                val matrix = ColorMatrix(ColorGradeEngine.colorMatrix(safeColor))
-                composed = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(matrix))
-            }
-
-            if (chromaKey.enabled && Build.VERSION.SDK_INT >= 33) {
-                val safe = MaskChromaComposition.normalize(chromaKey)
-                val shader = RuntimeShader(CHROMA_SHADER)
+            val safeChroma = MaskChromaComposition.normalize(chromaKey)
+            val composed: RenderEffect? = if (Build.VERSION.SDK_INT >= 33 &&
+                (safeChroma.enabled || !ColorGradeEngine.isNeutral(safeColor))
+            ) {
+                val shader = RuntimeShader(COLOR_PIPELINE_SHADER)
+                shader.setFloatUniform("chromaEnabled", if (safeChroma.enabled) 1f else 0f)
                 shader.setFloatUniform(
                     "keyColor",
-                    Color.red(safe.keyColorArgb) / 255f,
-                    Color.green(safe.keyColorArgb) / 255f,
-                    Color.blue(safe.keyColorArgb) / 255f
+                    Color.red(safeChroma.keyColorArgb) / 255f,
+                    Color.green(safeChroma.keyColorArgb) / 255f,
+                    Color.blue(safeChroma.keyColorArgb) / 255f
                 )
-                shader.setFloatUniform("tolerance", safe.tolerance)
-                shader.setFloatUniform("softness", safe.softness)
-                shader.setFloatUniform("spill", safe.spill)
-                val chromaEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
-                composed = composed?.let { RenderEffect.createChainEffect(it, chromaEffect) } ?: chromaEffect
-            }
+                shader.setFloatUniform("tolerance", safeChroma.tolerance)
+                shader.setFloatUniform("softness", safeChroma.softness)
+                shader.setFloatUniform("spill", safeChroma.spill)
 
+                val matrix = ColorGradeEngine.colorMatrix(safeColor).copyOf().also { values ->
+                    values[4] /= 255f
+                    values[9] /= 255f
+                    values[14] /= 255f
+                    values[19] /= 255f
+                }
+                shader.setFloatUniform("colorRow0", matrix[0], matrix[1], matrix[2], matrix[3])
+                shader.setFloatUniform("colorRow1", matrix[5], matrix[6], matrix[7], matrix[8])
+                shader.setFloatUniform("colorRow2", matrix[10], matrix[11], matrix[12], matrix[13])
+                shader.setFloatUniform("colorRow3", matrix[15], matrix[16], matrix[17], matrix[18])
+                shader.setFloatUniform("colorBias", matrix[4], matrix[9], matrix[14], matrix[19])
+                setCurveUniform(shader, "master", ColorGradeEngine.curveValues(safeColor.curves.master))
+                setCurveUniform(shader, "red", ColorGradeEngine.curveValues(safeColor.curves.red))
+                setCurveUniform(shader, "green", ColorGradeEngine.curveValues(safeColor.curves.green))
+                setCurveUniform(shader, "blue", ColorGradeEngine.curveValues(safeColor.curves.blue))
+                shader.setFloatUniform("hslHueDegrees", safeColor.hsl.hueDegrees)
+                shader.setFloatUniform("hslSaturation", safeColor.hsl.saturation)
+                shader.setFloatUniform("hslLuminance", safeColor.hsl.luminance)
+                shader.setFloatUniform("lutCode", ColorGradeEngine.lutCode(safeColor.lut.preset).toFloat())
+                shader.setFloatUniform("lutIntensity", safeColor.lut.intensity)
+                RenderEffect.createRuntimeShaderEffect(shader, "content")
+            } else if (!ColorGradeEngine.isBaseNeutral(safeColor)) {
+                RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(ColorMatrix(ColorGradeEngine.colorMatrix(safeColor))))
+            } else {
+                null
+            }
             textureView.setRenderEffect(composed)
         }.onFailure { textureView.setRenderEffect(null) }
+    }
+
+    private fun setCurveUniform(shader: RuntimeShader, prefix: String, values: FloatArray) {
+        if (values.size < 5) return
+        shader.setFloatUniform("${prefix}CurveA", values[0], values[1], values[2], values[3])
+        shader.setFloatUniform("${prefix}CurveB", values[4])
     }
 
     private fun startForward(active: MediaPlayer, target: Int) {
@@ -446,22 +472,145 @@ class PreviewPlayer(
     }
 
     companion object {
-        private const val CHROMA_SHADER = """
+        private const val COLOR_PIPELINE_SHADER = """
             uniform shader content;
+            uniform float chromaEnabled;
             uniform float3 keyColor;
             uniform float tolerance;
             uniform float softness;
             uniform float spill;
+            uniform float4 colorRow0;
+            uniform float4 colorRow1;
+            uniform float4 colorRow2;
+            uniform float4 colorRow3;
+            uniform float4 colorBias;
+            uniform float4 masterCurveA;
+            uniform float masterCurveB;
+            uniform float4 redCurveA;
+            uniform float redCurveB;
+            uniform float4 greenCurveA;
+            uniform float greenCurveB;
+            uniform float4 blueCurveA;
+            uniform float blueCurveB;
+            uniform float hslHueDegrees;
+            uniform float hslSaturation;
+            uniform float hslLuminance;
+            uniform float lutCode;
+            uniform float lutIntensity;
+
+            float curveValue(float value, float4 a, float b) {
+                float x = clamp(value, 0.0, 1.0) * 4.0;
+                if (x < 1.0) return mix(a.x, a.y, x);
+                if (x < 2.0) return mix(a.y, a.z, x - 1.0);
+                if (x < 3.0) return mix(a.z, a.w, x - 2.0);
+                return mix(a.w, b, x - 3.0);
+            }
+
+            float3 applyCurves(float3 color) {
+                color.r = curveValue(curveValue(color.r, masterCurveA, masterCurveB), redCurveA, redCurveB);
+                color.g = curveValue(curveValue(color.g, masterCurveA, masterCurveB), greenCurveA, greenCurveB);
+                color.b = curveValue(curveValue(color.b, masterCurveA, masterCurveB), blueCurveA, blueCurveB);
+                return clamp(color, 0.0, 1.0);
+            }
+
+            float3 rgbToHsl(float3 c) {
+                float maxC = max(c.r, max(c.g, c.b));
+                float minC = min(c.r, min(c.g, c.b));
+                float l = (maxC + minC) * 0.5;
+                float d = maxC - minC;
+                if (d <= 0.00001) return float3(0.0, 0.0, l);
+                float s = d / max(0.00001, 1.0 - abs(2.0 * l - 1.0));
+                float h;
+                if (maxC == c.r) h = mod((c.g - c.b) / d, 6.0);
+                else if (maxC == c.g) h = (c.b - c.r) / d + 2.0;
+                else h = (c.r - c.g) / d + 4.0;
+                h /= 6.0;
+                if (h < 0.0) h += 1.0;
+                return float3(h, clamp(s, 0.0, 1.0), clamp(l, 0.0, 1.0));
+            }
+
+            float hueToRgb(float p, float q, float t) {
+                t = mod(t, 1.0);
+                if (t < 0.0) t += 1.0;
+                if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
+                if (t < 0.5) return q;
+                if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+                return p;
+            }
+
+            float3 hslToRgb(float3 hsl) {
+                float h = mod(hsl.x, 1.0);
+                if (h < 0.0) h += 1.0;
+                float s = clamp(hsl.y, 0.0, 1.0);
+                float l = clamp(hsl.z, 0.0, 1.0);
+                if (s <= 0.00001) return float3(l);
+                float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+                float p = 2.0 * l - q;
+                return float3(
+                    hueToRgb(p, q, h + 1.0 / 3.0),
+                    hueToRgb(p, q, h),
+                    hueToRgb(p, q, h - 1.0 / 3.0)
+                );
+            }
+
+            float3 applyHsl(float3 color) {
+                float3 hsl = rgbToHsl(color);
+                hsl.x += hslHueDegrees / 360.0;
+                hsl.y = clamp(hsl.y + hslSaturation, 0.0, 1.0);
+                hsl.z = clamp(hsl.z + hslLuminance * 0.5, 0.0, 1.0);
+                return clamp(hslToRgb(hsl), 0.0, 1.0);
+            }
+
+            float3 applyLut(float3 color) {
+                float intensity = clamp(lutIntensity, 0.0, 1.0);
+                if (lutCode < 0.5 || intensity <= 0.0) return color;
+                float3 target = color;
+                float luma = dot(color, float3(0.299, 0.587, 0.114));
+                if (lutCode < 1.5) {
+                    target = float3(
+                        1.06 * color.r + 0.01 * color.g - 0.02 * color.b - 0.005,
+                        -0.01 * color.r + 1.01 * color.g,
+                        -0.03 * color.r + 0.02 * color.g + 1.07 * color.b + 0.01
+                    );
+                } else if (lutCode < 2.5) {
+                    float shadow = 1.0 - luma;
+                    float highlight = luma;
+                    target = float3(
+                        color.r + 0.10 * highlight - 0.03 * shadow,
+                        color.g + 0.025 * shadow,
+                        color.b + 0.08 * shadow - 0.06 * highlight
+                    );
+                } else if (lutCode < 3.5) {
+                    target = float3(color.r * 0.90 + 0.075, color.g * 0.90 + 0.055, color.b * 0.88 + 0.045);
+                } else if (lutCode < 4.5) {
+                    float3 pop = (color - float3(0.5)) * 1.12 + float3(0.5);
+                    float popLuma = dot(pop, float3(0.299, 0.587, 0.114));
+                    target = float3(popLuma) + (pop - float3(popLuma)) * 1.08;
+                }
+                return clamp(mix(color, target, intensity), 0.0, 1.0);
+            }
 
             half4 main(float2 p) {
                 half4 src = content.eval(p);
-                float3 rgb = float3(src.rgb);
-                float distanceFromKey = distance(rgb, keyColor);
-                float alpha = smoothstep(tolerance, tolerance + max(softness, 0.001), distanceFromKey);
-                float proximity = 1.0 - smoothstep(tolerance, tolerance + 0.25, distanceFromKey);
-                float luma = dot(rgb, float3(0.299, 0.587, 0.114));
-                float3 despilled = mix(rgb, float3(luma), proximity * spill);
-                return half4(half3(despilled), src.a * half(alpha));
+                float4 color = float4(src);
+                if (chromaEnabled > 0.5) {
+                    float3 rgb = color.rgb;
+                    float distanceFromKey = distance(rgb, keyColor);
+                    float alpha = smoothstep(tolerance, tolerance + max(softness, 0.001), distanceFromKey);
+                    float proximity = 1.0 - smoothstep(tolerance, tolerance + 0.25, distanceFromKey);
+                    float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+                    color.rgb = mix(rgb, float3(luma), proximity * spill);
+                    color.a *= alpha;
+                }
+                color = float4(
+                    dot(colorRow0, color) + colorBias.r,
+                    dot(colorRow1, color) + colorBias.g,
+                    dot(colorRow2, color) + colorBias.b,
+                    dot(colorRow3, color) + colorBias.a
+                );
+                color = clamp(color, 0.0, 1.0);
+                color.rgb = applyLut(applyHsl(applyCurves(color.rgb)));
+                return half4(color);
             }
         """
         private const val REVERSE_SEEK_INTERVAL_MS = 85L

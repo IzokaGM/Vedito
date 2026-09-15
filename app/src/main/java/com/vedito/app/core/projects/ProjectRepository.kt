@@ -25,6 +25,11 @@ import com.vedito.app.core.model.MaskShape
 import com.vedito.app.core.model.MaskSpec
 import com.vedito.app.core.model.ChromaKeySpec
 import com.vedito.app.core.model.ColorGradeSpec
+import com.vedito.app.core.model.ColorLutPreset
+import com.vedito.app.core.model.ColorLutSpec
+import com.vedito.app.core.model.HslAdjustSpec
+import com.vedito.app.core.model.RgbCurveSpec
+import com.vedito.app.core.model.ToneCurveSpec
 import com.vedito.app.core.model.MotionTrackSpec
 import com.vedito.app.core.model.StabilizationSpec
 import com.vedito.app.core.model.TrackingPoint
@@ -260,6 +265,9 @@ class ProjectRepository(context: Context) {
 
     private fun parseColorGrade(json: JSONObject?): ColorGradeSpec {
         if (json == null) return ColorGradeSpec()
+        val curvesJson = json.optJSONObject("curves")
+        val hslJson = json.optJSONObject("hsl")
+        val lutJson = json.optJSONObject("lut")
         return ColorGradeEngine.normalize(
             ColorGradeSpec(
                 exposure = json.optDouble("exposure", 0.0).toFloat(),
@@ -267,7 +275,35 @@ class ProjectRepository(context: Context) {
                 saturation = json.optDouble("saturation", 0.0).toFloat(),
                 temperature = json.optDouble("temperature", 0.0).toFloat(),
                 tint = json.optDouble("tint", 0.0).toFloat(),
-                fade = json.optDouble("fade", 0.0).toFloat()
+                fade = json.optDouble("fade", 0.0).toFloat(),
+                curves = RgbCurveSpec(
+                    master = parseToneCurve(curvesJson?.optJSONObject("master")),
+                    red = parseToneCurve(curvesJson?.optJSONObject("red")),
+                    green = parseToneCurve(curvesJson?.optJSONObject("green")),
+                    blue = parseToneCurve(curvesJson?.optJSONObject("blue"))
+                ),
+                hsl = HslAdjustSpec(
+                    hueDegrees = hslJson?.optDouble("hueDegrees", 0.0)?.toFloat() ?: 0f,
+                    saturation = hslJson?.optDouble("saturation", 0.0)?.toFloat() ?: 0f,
+                    luminance = hslJson?.optDouble("luminance", 0.0)?.toFloat() ?: 0f
+                ),
+                lut = ColorLutSpec(
+                    preset = enumValueOrDefault(lutJson?.optString("preset").orEmpty(), ColorLutPreset.NONE),
+                    intensity = lutJson?.optDouble("intensity", 1.0)?.toFloat() ?: 1f
+                )
+            )
+        )
+    }
+
+    private fun parseToneCurve(json: JSONObject?): ToneCurveSpec {
+        if (json == null) return ToneCurveSpec()
+        return ColorGradeEngine.normalize(
+            ToneCurveSpec(
+                black = json.optDouble("black", 0.0).toFloat(),
+                shadows = json.optDouble("shadows", 0.25).toFloat(),
+                midtones = json.optDouble("midtones", 0.50).toFloat(),
+                highlights = json.optDouble("highlights", 0.75).toFloat(),
+                white = json.optDouble("white", 1.0).toFloat()
             )
         )
     }
@@ -731,6 +767,37 @@ class ProjectRepository(context: Context) {
             .put("temperature", safe.temperature.toDouble())
             .put("tint", safe.tint.toDouble())
             .put("fade", safe.fade.toDouble())
+            .put(
+                "curves",
+                JSONObject()
+                    .put("master", toneCurveToJson(safe.curves.master))
+                    .put("red", toneCurveToJson(safe.curves.red))
+                    .put("green", toneCurveToJson(safe.curves.green))
+                    .put("blue", toneCurveToJson(safe.curves.blue))
+            )
+            .put(
+                "hsl",
+                JSONObject()
+                    .put("hueDegrees", safe.hsl.hueDegrees.toDouble())
+                    .put("saturation", safe.hsl.saturation.toDouble())
+                    .put("luminance", safe.hsl.luminance.toDouble())
+            )
+            .put(
+                "lut",
+                JSONObject()
+                    .put("preset", safe.lut.preset.name)
+                    .put("intensity", safe.lut.intensity.toDouble())
+            )
+    }
+
+    private fun toneCurveToJson(curve: ToneCurveSpec): JSONObject {
+        val safe = ColorGradeEngine.normalize(curve)
+        return JSONObject()
+            .put("black", safe.black.toDouble())
+            .put("shadows", safe.shadows.toDouble())
+            .put("midtones", safe.midtones.toDouble())
+            .put("highlights", safe.highlights.toDouble())
+            .put("white", safe.white.toDouble())
     }
 
     private fun motionTrackToJson(track: MotionTrackSpec, durationMs: Int): JSONObject {
@@ -861,6 +928,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 18
+        private const val SCHEMA_VERSION = 19
     }
 }

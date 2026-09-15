@@ -9,6 +9,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vedito.app.R
+import com.vedito.app.core.color.ColorGradeEngine
 import com.vedito.app.core.model.ColorGradeSpec
 import kotlin.math.roundToInt
 
@@ -23,6 +24,12 @@ class ColorGradeToolbarView @JvmOverloads constructor(
         TEMPERATURE_DOWN, TEMPERATURE_UP,
         TINT_DOWN, TINT_UP,
         FADE,
+        CURVE_PRESET,
+        HUE_DOWN, HUE_UP,
+        HSL_SAT_DOWN, HSL_SAT_UP,
+        HSL_LUMA_DOWN, HSL_LUMA_UP,
+        LUT_PRESET,
+        LUT_STRENGTH,
         RESET
     }
 
@@ -49,6 +56,15 @@ class ColorGradeToolbarView @JvmOverloads constructor(
         add(Action.TINT_DOWN, "Tint −")
         add(Action.TINT_UP, "Tint +")
         add(Action.FADE, "Fade")
+        add(Action.CURVE_PRESET, "Curve")
+        add(Action.HUE_DOWN, "Hue −")
+        add(Action.HUE_UP, "Hue +")
+        add(Action.HSL_SAT_DOWN, "HSL Sat −")
+        add(Action.HSL_SAT_UP, "HSL Sat +")
+        add(Action.HSL_LUMA_DOWN, "HSL Lum −")
+        add(Action.HSL_LUMA_UP, "HSL Lum +")
+        add(Action.LUT_PRESET, "LUT")
+        add(Action.LUT_STRENGTH, "LUT 100%")
         add(Action.RESET, "Reset color")
     }
 
@@ -57,13 +73,19 @@ class ColorGradeToolbarView @JvmOverloads constructor(
             it.isEnabled = supportedForSelection
             it.alpha = if (supportedForSelection) 1f else 0.35f
         }
-        val s = spec ?: ColorGradeSpec()
+        val s = ColorGradeEngine.normalize(spec ?: ColorGradeSpec())
         buttons[Action.EXPOSURE_UP]?.text = "Exp ${signed(s.exposure)}"
         buttons[Action.CONTRAST_UP]?.text = "Con ${percent(s.contrast)}"
         buttons[Action.SATURATION_UP]?.text = "Sat ${percent(s.saturation)}"
         buttons[Action.TEMPERATURE_UP]?.text = "Temp ${percent(s.temperature)}"
         buttons[Action.TINT_UP]?.text = "Tint ${percent(s.tint)}"
         buttons[Action.FADE]?.text = "Fade ${(s.fade * 100f).roundToInt()}%"
+        buttons[Action.CURVE_PRESET]?.text = "Curve ${ColorGradeEngine.curvePresetLabel(s.curves)}"
+        buttons[Action.HUE_UP]?.text = "Hue ${s.hsl.hueDegrees.roundToInt()}°"
+        buttons[Action.HSL_SAT_UP]?.text = "HSL Sat ${percent(s.hsl.saturation)}"
+        buttons[Action.HSL_LUMA_UP]?.text = "HSL Lum ${percent(s.hsl.luminance)}"
+        buttons[Action.LUT_PRESET]?.text = "LUT ${ColorGradeEngine.lutLabel(s.lut.preset)}"
+        buttons[Action.LUT_STRENGTH]?.text = "LUT ${(s.lut.intensity * 100f).roundToInt()}%"
     }
 
     private fun signed(value: Float): String = if (value >= 0f) "+%.1f".format(value) else "%.1f".format(value)

@@ -91,14 +91,18 @@ Completed:
 - Fade-Black/Flash/Wipe clip-boundary transitions with duration control.
 - Persistence + undo/redo.
 
+Completed through Patch 25:
+- Five-anchor Master/R/G/B curve state, global HSL controls and built-in deterministic LUT looks/intensity.
+- API 33+ unified RuntimeShader preview plus encoder GLES and software-fallback export parity.
+
 Pending:
-- HSL/curves/wheels/LUT expansion and richer shader library. Patch 23 now moves the canonical main-source transform/chroma/color/mask chain onto export GLES when the post stack is compatible.
+- Manual graph curve editor, color wheels, selective/per-band HSL and external `.cube` LUT import.
 - Dual-source cross-dissolve and richer transition library.
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 24 adds recoverable segmented export and long-project guardrails on top of the Patch 23 GPU/reverse path.**
-Completed through Patch 24:
+**In progress — Patch 25 extends the canonical GPU source graph with advanced color while retaining Patch 24 recovery.**
+Completed through Patch 25:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
@@ -231,12 +235,15 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - `FrameLease` pins decoder-owned main-source bitmaps through encoder upload.
   - Reverse clips prefer bounded MediaCodec previous-sync forward-decode cache before MMR fallback.
   - Schema remains v18.
-- **Patch 24:** Export Recovery / Long-Project Hardening Foundation — current patch.
+- **Patch 24:** Export Recovery / Long-Project Hardening Foundation — locked after CI/device verification.
   - Frame-boundary recoverable video checkpoints with render-ABI fingerprinting.
   - Full-length AAC checkpoint + lossless final remux.
   - Resume-aware cache/destination storage preflight and thermal checkpoint hardening.
   - Per-segment decoder/GPU/compositor resource reacquisition; schema remains v18.
-- **Patch 25:** Advanced Color / LUT / Curves Foundation — next.
+- **Patch 25:** Advanced Color / LUT / Curves Foundation — current patch.
+  - Five-anchor Master/R/G/B curves, global HSL and built-in LUT look/intensity state.
+  - Unified API 33+ preview shader + GLES export + CPU fallback parity.
+  - Schema v19 persistence and Patch 24 recovery fingerprint invalidation.
 - **Patch 26+:** advanced audio/text, AI/templates/cloud and release hardening.
 
 ## Release gates

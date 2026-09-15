@@ -859,6 +859,35 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 val index = presets.indices.minByOrNull { kotlin.math.abs(presets[it] - color.fade) } ?: 0
                 color.copy(fade = presets[(index + 1) % presets.size])
             }
+            ColorGradeToolbarView.Action.CURVE_PRESET -> mutateSelectedColor { color ->
+                color.copy(curves = ColorGradeEngine.nextCurvePreset(color.curves))
+            }
+            ColorGradeToolbarView.Action.HUE_DOWN -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(hueDegrees = color.hsl.hueDegrees - COLOR_HUE_STEP))
+            }
+            ColorGradeToolbarView.Action.HUE_UP -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(hueDegrees = color.hsl.hueDegrees + COLOR_HUE_STEP))
+            }
+            ColorGradeToolbarView.Action.HSL_SAT_DOWN -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(saturation = color.hsl.saturation - COLOR_HSL_STEP))
+            }
+            ColorGradeToolbarView.Action.HSL_SAT_UP -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(saturation = color.hsl.saturation + COLOR_HSL_STEP))
+            }
+            ColorGradeToolbarView.Action.HSL_LUMA_DOWN -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(luminance = color.hsl.luminance - COLOR_HSL_STEP))
+            }
+            ColorGradeToolbarView.Action.HSL_LUMA_UP -> mutateSelectedColor { color ->
+                color.copy(hsl = color.hsl.copy(luminance = color.hsl.luminance + COLOR_HSL_STEP))
+            }
+            ColorGradeToolbarView.Action.LUT_PRESET -> mutateSelectedColor { color ->
+                color.copy(lut = color.lut.copy(preset = ColorGradeEngine.nextLutPreset(color.lut.preset)))
+            }
+            ColorGradeToolbarView.Action.LUT_STRENGTH -> mutateSelectedColor { color ->
+                val presets = COLOR_LUT_STRENGTH_PRESETS
+                val index = presets.indices.minByOrNull { kotlin.math.abs(presets[it] - color.lut.intensity) } ?: 0
+                color.copy(lut = color.lut.copy(intensity = presets[(index + 1) % presets.size]))
+            }
             ColorGradeToolbarView.Action.RESET -> mutateSelectedColor { ColorGradeSpec() }
         }
     }
@@ -3450,6 +3479,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private val CHROMA_SPILL_PRESETS = floatArrayOf(0f, 0.15f, 0.30f, 0.50f, 0.75f)
     private val STABILIZATION_STRENGTH_PRESETS = floatArrayOf(0.35f, 0.50f, 0.65f, 0.80f, 1.0f)
     private val COLOR_FADE_PRESETS = floatArrayOf(0f, 0.12f, 0.25f, 0.40f, 0.60f)
+    private val COLOR_LUT_STRENGTH_PRESETS = floatArrayOf(0.25f, 0.50f, 0.75f, 1f)
     private val CHROMA_KEY_COLORS = intArrayOf(
         MaskChromaToolbarView.KEY_GREEN,
         MaskChromaToolbarView.KEY_BLUE,
@@ -3461,6 +3491,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val MASK_SIZE_STEP = 0.10f
         private const val COLOR_EXPOSURE_STEP = 0.25f
         private const val COLOR_ADJUST_STEP = 0.10f
+        private const val COLOR_HUE_STEP = 15f
+        private const val COLOR_HSL_STEP = 0.10f
         const val EXTRA_PROJECT_ID = "vedito.project_id"
         private const val MAX_ADDED_VIDEOS = 12
         private const val MAX_ADDED_AUDIO = 12

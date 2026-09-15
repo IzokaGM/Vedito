@@ -4,7 +4,7 @@ Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.24.0 / versionCode 24 / project schema v18**.
+- Current patch: **0.25.0 / versionCode 25 / project schema v19**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -18,8 +18,10 @@ Video checkpoints are video-only MP4s. Audio is mixed/encoded once into one audi
 
 Patch 24 preflight is resume-aware: completed checkpoint bytes reduce extra cache-space requirements, and a valid audio checkpoint removes the large temporary PCM working reserve. Destination storage is checked again immediately before final assembly. Thermal pressure is checked between checkpoints so expensive decoder/GPU state has already been released when backing off or failing safely.
 
-Patch 23 `GpuSourceGraphPlanner`/reverse cache, Patch 22 `ExportPlanner`/`ExportCapabilityProbe`, Patch 20 `AudioMixPlan`/`OfflineAudioMixer`, `ClipTimeMap` and `FrameCompositionBuilder` remain authoritative. Project schema stays v18.
+Patch 25 extends the existing canonical color state rather than creating a parallel render model. `ColorGradeEngine` order is base matrix → Master/R/G/B five-anchor curves → global HSL → built-in LUT look. `GpuSourceGraphPlanner`, API 33+ `PreviewPlayer` RuntimeShader and the software export fallback consume the same saved state. Project schema is v19; missing fields from older projects normalize to neutral.
 
 Important limits: no persistent foreground export service yet; process death can lose only the active segment, not finalized checkpoints. Android may clear app cache. Zero-copy OES/SurfaceTexture source decode is still pending.
 
-Next planned milestone: **Patch 25 — Advanced Color / LUT / Curves Foundation** unless CI/device testing exposes a Patch 24 regression first.
+Patch 25 changes encoded pixels, so `ExportRecoveryPlanner` render salt is `vedito-render-p25-r1`; never reuse older Patch 24 checkpoints across this renderer boundary. External `.cube` LUT import, manual graph curve UI, per-band HSL/color wheels and pre-API-33 advanced live preview remain pending.
+
+Next planned milestone: **Patch 26 — Advanced Audio / Text Expansion Foundation** unless CI/device testing exposes a Patch 25 regression first.

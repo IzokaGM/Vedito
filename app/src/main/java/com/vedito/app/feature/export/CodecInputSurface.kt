@@ -57,6 +57,13 @@ class CodecInputSurface(
     private var chromaSpillHandle = 0
     private val colorRowHandles = IntArray(4)
     private var colorBiasHandle = 0
+    private val curveAHandles = IntArray(4)
+    private val curveBHandles = IntArray(4)
+    private var hslHueHandle = 0
+    private var hslSaturationHandle = 0
+    private var hslLuminanceHandle = 0
+    private var lutCodeHandle = 0
+    private var lutIntensityHandle = 0
     private var maskShapeHandle = 0
     private var maskCenterHandle = 0
     private var maskSizeHandle = 0
@@ -247,6 +254,15 @@ class CodecInputSurface(
             GLES20.glUniform4f(colorRowHandles[3], m[15], m[16], m[17], m[18])
             GLES20.glUniform4f(colorBiasHandle, m[4], m[9], m[14], m[19])
         }
+        setCurveUniform(0, plan.masterCurve)
+        setCurveUniform(1, plan.redCurve)
+        setCurveUniform(2, plan.greenCurve)
+        setCurveUniform(3, plan.blueCurve)
+        GLES20.glUniform1f(hslHueHandle, plan.hslHueDegrees)
+        GLES20.glUniform1f(hslSaturationHandle, plan.hslSaturation)
+        GLES20.glUniform1f(hslLuminanceHandle, plan.hslLuminance)
+        GLES20.glUniform1f(lutCodeHandle, plan.lutCode.toFloat())
+        GLES20.glUniform1f(lutIntensityHandle, plan.lutIntensity.coerceIn(0f, 1f))
 
         GLES20.glUniform1f(maskShapeHandle, plan.maskShapeCode.toFloat())
         GLES20.glUniform2f(maskCenterHandle, plan.maskCenterX, plan.maskCenterY)
@@ -254,6 +270,13 @@ class CodecInputSurface(
         GLES20.glUniform1f(maskFeatherHandle, plan.maskFeather)
         GLES20.glUniform1f(maskInvertedHandle, if (plan.maskInverted) 1f else 0f)
         GLES20.glUniform3f(backgroundHandle, plan.backgroundR, plan.backgroundG, plan.backgroundB)
+    }
+
+
+    private fun setCurveUniform(index: Int, values: FloatArray) {
+        val v = if (values.size >= 5) values else floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+        GLES20.glUniform4f(curveAHandles[index], v[0], v[1], v[2], v[3])
+        GLES20.glUniform1f(curveBHandles[index], v[4])
     }
 
     private fun applyPostUniforms(planInput: GpuPostProcessPlan) {
@@ -334,6 +357,16 @@ class CodecInputSurface(
         chromaSpillHandle = GLES20.glGetUniformLocation(program, "uChromaSpill")
         for (index in 0..3) colorRowHandles[index] = GLES20.glGetUniformLocation(program, "uColorRow$index")
         colorBiasHandle = GLES20.glGetUniformLocation(program, "uColorBias")
+        val curvePrefixes = arrayOf("Master", "Red", "Green", "Blue")
+        for (index in curvePrefixes.indices) {
+            curveAHandles[index] = GLES20.glGetUniformLocation(program, "u${curvePrefixes[index]}CurveA")
+            curveBHandles[index] = GLES20.glGetUniformLocation(program, "u${curvePrefixes[index]}CurveB")
+        }
+        hslHueHandle = GLES20.glGetUniformLocation(program, "uHslHueDegrees")
+        hslSaturationHandle = GLES20.glGetUniformLocation(program, "uHslSaturation")
+        hslLuminanceHandle = GLES20.glGetUniformLocation(program, "uHslLuminance")
+        lutCodeHandle = GLES20.glGetUniformLocation(program, "uLutCode")
+        lutIntensityHandle = GLES20.glGetUniformLocation(program, "uLutIntensity")
         maskShapeHandle = GLES20.glGetUniformLocation(program, "uMaskShape")
         maskCenterHandle = GLES20.glGetUniformLocation(program, "uMaskCenter")
         maskSizeHandle = GLES20.glGetUniformLocation(program, "uMaskSize")
@@ -450,6 +483,19 @@ class CodecInputSurface(
             uniform vec4 uColorRow2;
             uniform vec4 uColorRow3;
             uniform vec4 uColorBias;
+            uniform vec4 uMasterCurveA;
+            uniform float uMasterCurveB;
+            uniform vec4 uRedCurveA;
+            uniform float uRedCurveB;
+            uniform vec4 uGreenCurveA;
+            uniform float uGreenCurveB;
+            uniform vec4 uBlueCurveA;
+            uniform float uBlueCurveB;
+            uniform float uHslHueDegrees;
+            uniform float uHslSaturation;
+            uniform float uHslLuminance;
+            uniform float uLutCode;
+            uniform float uLutIntensity;
             uniform float uMaskShape;
             uniform vec2 uMaskCenter;
             uniform vec2 uMaskSize;
@@ -477,6 +523,106 @@ class CodecInputSurface(
                     dot(uColorRow2, color) + uColorBias.b,
                     dot(uColorRow3, color) + uColorBias.a
                 );
+            }
+
+            float curveValue(float value, vec4 a, float b) {
+                float x = clamp(value, 0.0, 1.0) * 4.0;
+                if (x < 1.0) return mix(a.x, a.y, x);
+                if (x < 2.0) return mix(a.y, a.z, x - 1.0);
+                if (x < 3.0) return mix(a.z, a.w, x - 2.0);
+                return mix(a.w, b, x - 3.0);
+            }
+
+            vec3 applyCurves(vec3 color) {
+                color.r = curveValue(curveValue(color.r, uMasterCurveA, uMasterCurveB), uRedCurveA, uRedCurveB);
+                color.g = curveValue(curveValue(color.g, uMasterCurveA, uMasterCurveB), uGreenCurveA, uGreenCurveB);
+                color.b = curveValue(curveValue(color.b, uMasterCurveA, uMasterCurveB), uBlueCurveA, uBlueCurveB);
+                return clamp(color, 0.0, 1.0);
+            }
+
+            vec3 rgbToHsl(vec3 c) {
+                float maxC = max(c.r, max(c.g, c.b));
+                float minC = min(c.r, min(c.g, c.b));
+                float l = (maxC + minC) * 0.5;
+                float d = maxC - minC;
+                if (d <= 0.00001) return vec3(0.0, 0.0, l);
+                float s = d / max(0.00001, 1.0 - abs(2.0 * l - 1.0));
+                float h;
+                if (maxC == c.r) h = mod((c.g - c.b) / d, 6.0);
+                else if (maxC == c.g) h = (c.b - c.r) / d + 2.0;
+                else h = (c.r - c.g) / d + 4.0;
+                h /= 6.0;
+                if (h < 0.0) h += 1.0;
+                return vec3(h, clamp(s, 0.0, 1.0), clamp(l, 0.0, 1.0));
+            }
+
+            float hueToRgb(float p, float q, float t) {
+                t = mod(t, 1.0);
+                if (t < 0.0) t += 1.0;
+                if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
+                if (t < 0.5) return q;
+                if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+                return p;
+            }
+
+            vec3 hslToRgb(vec3 hsl) {
+                float h = mod(hsl.x, 1.0);
+                if (h < 0.0) h += 1.0;
+                float s = clamp(hsl.y, 0.0, 1.0);
+                float l = clamp(hsl.z, 0.0, 1.0);
+                if (s <= 0.00001) return vec3(l);
+                float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+                float p = 2.0 * l - q;
+                return vec3(
+                    hueToRgb(p, q, h + 1.0 / 3.0),
+                    hueToRgb(p, q, h),
+                    hueToRgb(p, q, h - 1.0 / 3.0)
+                );
+            }
+
+            vec3 applyHsl(vec3 color) {
+                vec3 hsl = rgbToHsl(color);
+                hsl.x += uHslHueDegrees / 360.0;
+                hsl.y = clamp(hsl.y + uHslSaturation, 0.0, 1.0);
+                hsl.z = clamp(hsl.z + uHslLuminance * 0.5, 0.0, 1.0);
+                return clamp(hslToRgb(hsl), 0.0, 1.0);
+            }
+
+            vec3 applyLut(vec3 color) {
+                float intensity = clamp(uLutIntensity, 0.0, 1.0);
+                if (uLutCode < 0.5 || intensity <= 0.0) return color;
+                vec3 target = color;
+                float luma = dot(color, vec3(0.299, 0.587, 0.114));
+                if (uLutCode < 1.5) {
+                    target = vec3(
+                        1.06 * color.r + 0.01 * color.g - 0.02 * color.b - 0.005,
+                        -0.01 * color.r + 1.01 * color.g,
+                        -0.03 * color.r + 0.02 * color.g + 1.07 * color.b + 0.01
+                    );
+                } else if (uLutCode < 2.5) {
+                    float shadow = 1.0 - luma;
+                    float highlight = luma;
+                    target = vec3(
+                        color.r + 0.10 * highlight - 0.03 * shadow,
+                        color.g + 0.025 * shadow,
+                        color.b + 0.08 * shadow - 0.06 * highlight
+                    );
+                } else if (uLutCode < 3.5) {
+                    target = vec3(
+                        color.r * 0.90 + 0.075,
+                        color.g * 0.90 + 0.055,
+                        color.b * 0.88 + 0.045
+                    );
+                } else if (uLutCode < 4.5) {
+                    vec3 pop = (color - vec3(0.5)) * 1.12 + vec3(0.5);
+                    float popLuma = dot(pop, vec3(0.299, 0.587, 0.114));
+                    target = vec3(popLuma) + (pop - vec3(popLuma)) * 1.08;
+                }
+                return clamp(mix(color, target, intensity), 0.0, 1.0);
+            }
+
+            vec3 advancedColor(vec3 color) {
+                return applyLut(applyHsl(applyCurves(color)));
             }
 
             vec4 sourceGraph(vec2 uv) {
@@ -516,6 +662,7 @@ class CodecInputSurface(
                 }
                 color = colorMatrix(color);
                 color = clamp(color, 0.0, 1.0);
+                color.rgb = advancedColor(color.rgb);
                 color.a *= clamp(uOpacity, 0.0, 1.0);
                 vec3 rgb = mix(uBackground, color.rgb, color.a);
                 return vec4(rgb, 1.0);
