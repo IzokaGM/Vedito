@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.19.0 / versionCode 19**
+- Current patch: **0.20.0 / versionCode 20**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -87,8 +87,10 @@ Important modules:
 - `feature/editor/effect/*` — FX timeline, controls and native preview composition.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 - `core/export/ExportPlan.kt` / `ExportSupport.kt` — Android-free export sizing/capability contract.
+- `core/export/AudioMixPlan.kt` — renderer-independent source-video/audio-track timing, volume, mute and fade contract for preview/export parity.
 - `feature/export/SoftwareFrameComposer.kt` — deterministic off-screen software fallback consuming canonical project/composition state.
 - `feature/export/CodecInputSurface.kt` — EGL/GLES blit bridge into the video encoder input Surface.
+- `feature/export/PcmMediaDecoder.kt` / `OfflineAudioMixer.kt` — export audio decode, normalized PCM cache, overlap mixing and forward-speed time-stretch foundation.
 - `feature/export/VideoExportEngine.kt` / `Mp4MuxSink.kt` — H.264/AAC MediaCodec + MediaMuxer export pipeline, progress/cancel/error lifecycle.
 
 ## Completed progression
@@ -109,7 +111,8 @@ Important modules:
 - Patch 16: renderer-independent main-clip rectangle/ellipse mask state with size/position/feather/invert, real native occlusion preview, chroma-key state with tolerance/softness/spill, API 33+ RuntimeShader chroma preview, undo/redo and schema v16 persistence.
 - Patch 17: renderer-independent main-clip motion tracking anchors + stabilization state, draggable manual reticle workflow, deterministic interpolation/inverse-translation stabilization preview, trim/split/speed/reverse timing preservation, undo/redo and schema v17 persistence.
 - Patch 18: renderer-independent per-clip color grade state, deterministic color-matrix math, API 31+ hardware color preview, chroma+color RenderEffect chaining, and Android-free `FrameCompositionBuilder` for preview/export convergence; schema v18 persistence.
-- Patch 19: first real off-screen MP4 export foundation. H.264 video is encoded from a deterministic composed frame pipeline that reuses timing/keyframe/stabilization/mask/chroma/color/effect/transition plus overlay/text/caption project state. 720p/1080p @ 30fps presets, valid AAC track, progress/cancel/error handling and SAF save flow are integrated.
+- Patch 19: first real off-screen MP4 export foundation. H.264 video is encoded from a deterministic composed frame pipeline that reuses timing/keyframe/stabilization/mask/chroma/color/effect/transition plus overlay/text/caption project state. 720p/1080p @ 30fps presets, AAC container track, progress/cancel/error handling and SAF save flow are integrated.
+- Major Patch 20: real audible export mixer. Main-video source sound plus independent audio tracks now render to stereo AAC with timeline sync, volume/mute/fades, multi-track overlap and lightweight pitch-preserving forward-speed handling. Export cancellation/mux/encoder lifecycle is hardened.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -129,7 +132,7 @@ Important modules:
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Production-grade GPU decoder/compositor performance, audible audio mixing and export recovery/resume. Patch 19 provides the first real MP4 export foundation.
+- Production-grade GPU decoder/compositor performance and export recovery/resume. Patch 20 now provides audible source/audio-track mixing; the software frame backend remains the major throughput bottleneck.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -148,21 +151,26 @@ Important modules:
 - This is compositor architecture + live color foundation, not the final off-screen GPU renderer.
 
 ## Patch 19 behavior/limits
-- Export is real: SAF destination → off-screen frame composition → H.264 MediaCodec surface encode → AAC + MP4 MediaMuxer.
+- Export became real: SAF destination → off-screen frame composition → H.264 MediaCodec surface encode → AAC + MP4 MediaMuxer.
 - Presets: 720p / 1080p at 30 fps with deterministic canvas sizing.
-- Main source timing uses the same `ClipTimeMap`/`FrameCompositionBuilder`, so trim, uniform speed, reverse and freeze source-frame mapping are not reimplemented in UI code.
-- Export software fallback composes transforms/keyframes/stabilization, mask, CPU chroma, color matrix, timed effects/transitions, image/video overlays, free text and captions before handing frames to GLES/MediaCodec.
-- Export can be cancelled; partial output is deleted on cancel/failure. UI reports progress/errors and keeps the screen awake while rendering.
-- **Important foundation limit:** Patch 19 creates a valid silent AAC track. Audible source-video audio and independent audio-timeline mixing are intentionally the next export milestone; the export UI warns before starting.
-- Frame acquisition currently uses `MediaMetadataRetriever` and a software compositor. It prioritizes deterministic correctness over long-project speed; production decoder/GPU optimization remains required.
-- Project persistence schema stays v18 because Patch 19 adds no new saved project fields.
+- Main source timing uses the same `ClipTimeMap`/`FrameCompositionBuilder`; visual state is not reimplemented in UI code.
+- Patch 19 audio was intentionally silent and is superseded by Major Patch 20.
+
+## Major Patch 20 behavior/limits
+- `AudioMixPlan`/`AudioMixMath` are now canonical for export audio ownership, timeline position, volume, mute and fades.
+- Main forward-video source sound and independent audio clips are decoded to seekable stereo PCM and mixed before AAC encoding.
+- Multiple audio clips can overlap. Audio-track volume, mute, fade-in and fade-out are honored.
+- Reverse/freeze source sound remains muted to match `PreviewPlayer`; overlay-video sound remains muted.
+- Forward speed-changed source audio uses a lightweight two-grain overlap-add stretcher for timeline sync with reduced pitch shift. It is not a studio-grade time-stretch algorithm.
+- Audio decoding/mixing is cancellation-aware. Export adds destination truncation fallback, encoder input stall guards, bounded pre-mux buffering, monotonic per-track PTS and partial-file cleanup.
+- Project persistence schema stays v18 because Major Patch 20 adds no new saved project fields.
+- Frame acquisition still uses `MediaMetadataRetriever` and software composition. This is the next major performance target.
 
 ## Next milestone
-**Patch 20 — Export Audio Mixer / Reliability Foundation**
-- audible source-video + audio-track render/mix,
-- volume/mute/fade parity,
-- retimed/reverse/freeze audio policy,
-- export preflight/storage checks and stronger long-project reliability,
-- keep the same MP4/export state contract rather than creating a second renderer.
+**Patch 21 — Production Decoder / GPU Compositor Performance Foundation**
+- replace frame-by-frame `MediaMetadataRetriever` extraction with a streaming decode path,
+- move more composition work to GPU/off-screen surfaces,
+- improve long-project memory/thermal/export throughput,
+- preserve the exact `FrameCompositionBuilder` + `AudioMixPlan` ownership contracts.
 
 See `WORKPLAN.md` for the full roadmap.

@@ -12,8 +12,8 @@ import kotlin.math.abs
  * Lightweight preview mixer for timeline audio. One MediaPlayer is maintained per audio clip
  * that has been prepared. Multiple overlapping clips can play concurrently.
  *
- * This is intentionally a preview engine, not the final export mixer. The export pipeline will
- * later render audio deterministically off-screen.
+ * This remains the lightweight preview mixer. Export uses the separate deterministic
+ * AudioMixPlan + OfflineAudioMixer pipeline so UI player state never owns render math.
  */
 class AudioPlaybackEngine(private val context: Context) {
     private data class Slot(

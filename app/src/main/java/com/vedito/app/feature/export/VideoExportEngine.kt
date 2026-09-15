@@ -14,9 +14,14 @@ import com.vedito.app.core.export.ExportSettings
 import com.vedito.app.core.model.Project
 import java.io.Closeable
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
+/**
+ * Patch 20 major export pipeline.
+ * Video and audible mixed PCM are rendered deterministically on one worker and muxed into MP4.
+ */
 class VideoExportEngine(
     context: Context
 ) : Closeable {
@@ -48,6 +53,7 @@ class VideoExportEngine(
 
     fun cancel() {
         cancelRequested.set(true)
+        worker?.interrupt()
     }
 
     fun isRunning(): Boolean = running
@@ -63,19 +69,37 @@ class VideoExportEngine(
         var audioCodec: MediaCodec? = null
         var codecSurface: CodecInputSurface? = null
         var composer: SoftwareFrameComposer? = null
+        var audioMixer: OfflineAudioMixer? = null
         var muxSink: Mp4MuxSink? = null
         var success = false
         var cancelled = false
         var terminalError: Throwable? = null
         var elapsedMs = 0L
+
         try {
-            postProgress(listener, 0, "Preparing ${plan.width}×${plan.height} export")
-            val outputPfd = appContext.contentResolver.openFileDescriptor(outputUri, "rw")
-                ?: error("Unable to open export destination")
+            postProgress(listener, 0, "Preparing export")
+            checkCancelled()
+
+            val outputPfd = openOutput(outputUri) ?: error("Unable to open export destination")
             pfd = outputPfd
             val muxer = MediaMuxer(outputPfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val sink = Mp4MuxSink(muxer)
             muxSink = sink
+
+            val activeMixer = OfflineAudioMixer(appContext, project, plan) {
+                if (cancelRequested.get() || Thread.currentThread().isInterrupted) throw ExportAudioCancelledException()
+            }
+            audioMixer = activeMixer
+            val prepareReport = activeMixer.prepare { index, total, label ->
+                val percent = if (total <= 0) 4 else (2 + index * 8 / total).coerceIn(2, 10)
+                postProgress(listener, percent, label)
+            }
+            if (prepareReport.unavailableSources > 0) {
+                postProgress(listener, 10, "Audio ready · ${prepareReport.unavailableSources} source(s) have no decodable sound")
+            } else {
+                postProgress(listener, 10, "Audio mixer ready")
+            }
+            checkCancelled()
 
             val videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, plan.width, plan.height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -92,26 +116,34 @@ class VideoExportEngine(
             val activeCodecSurface = CodecInputSurface(inputSurface)
             codecSurface = activeCodecSurface
 
-            val audioFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, plan.audioSampleRate, AUDIO_CHANNELS).apply {
+            val audioFormat = MediaFormat.createAudioFormat(
+                MediaFormat.MIMETYPE_AUDIO_AAC,
+                plan.audioSampleRate,
+                AUDIO_CHANNELS
+            ).apply {
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 setInteger(MediaFormat.KEY_BIT_RATE, plan.audioBitrate)
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 32_768)
             }
             val activeAudioCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
                 configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 start()
             }
             audioCodec = activeAudioCodec
+
             val frameComposer = SoftwareFrameComposer(appContext, project, plan)
             composer = frameComposer
+            val totalAudioSamples = ((plan.durationUs * plan.audioSampleRate) / 1_000_000L).coerceAtLeast(1L)
 
-            checkCancelled()
+            // Prime both encoders so MediaMuxer receives both formats before the main render loop.
             var audioSamplesQueued = 0L
             while (audioSamplesQueued == 0L) {
                 checkCancelled()
-                audioSamplesQueued = queueSilentAudio(activeAudioCodec, plan, 0L, AUDIO_PRIME_SAMPLES)
-                if (audioSamplesQueued == 0L) {
+                val queued = queueMixedAudio(activeAudioCodec, plan, activeMixer, audioSamplesQueued, AUDIO_PRIME_SAMPLES)
+                if (queued == audioSamplesQueued) {
                     drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false, timeoutUs = CODEC_TIMEOUT_US)
+                } else {
+                    audioSamplesQueued = queued
                 }
             }
             drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false)
@@ -121,10 +153,10 @@ class VideoExportEngine(
             drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
 
             var spin = 0
-            while (!sink.started && spin++ < 80) {
+            while (!sink.started && spin++ < FORMAT_READY_SPINS) {
                 checkCancelled()
-                drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false, timeoutUs = 10_000L)
-                drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false, timeoutUs = 10_000L)
+                drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false, timeoutUs = CODEC_TIMEOUT_US)
+                drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false, timeoutUs = CODEC_TIMEOUT_US)
             }
             check(sink.started) { "Encoder formats did not become ready" }
 
@@ -137,32 +169,44 @@ class VideoExportEngine(
                 val bitmap = frameComposer.compose(positionMs)
                 activeCodecSurface.draw(bitmap, frameIndex.toLong() * frameDurationNs)
                 drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
-                val percent = ((frameIndex + 1L) * 88L / plan.frameCount.coerceAtLeast(1)).toInt().coerceIn(1, 88)
+
+                val targetAudioSamples = min(
+                    totalAudioSamples,
+                    ((frameIndex + 1L) * plan.audioSampleRate / plan.frameRate).coerceAtLeast(audioSamplesQueued)
+                )
+                audioSamplesQueued = queueAudioUntil(
+                    codec = activeAudioCodec,
+                    plan = plan,
+                    mixer = activeMixer,
+                    sink = sink,
+                    samplesQueuedInput = audioSamplesQueued,
+                    targetSamples = targetAudioSamples
+                )
+
+                val percent = (10L + (frameIndex + 1L) * 78L / plan.frameCount.coerceAtLeast(1))
+                    .toInt().coerceIn(11, 88)
                 if (frameIndex % PROGRESS_FRAME_INTERVAL == 0 || frameIndex == plan.frameCount - 1) {
-                    postProgress(listener, percent, "Rendering frame ${frameIndex + 1}/${plan.frameCount}")
+                    postProgress(listener, percent, "Rendering video + audio ${frameIndex + 1}/${plan.frameCount}")
                 }
             }
 
             activeVideoCodec.signalEndOfInputStream()
             drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = true)
-            postProgress(listener, 90, "Finalizing AAC track")
+            postProgress(listener, 90, "Finalizing mixed AAC audio")
 
-            val totalAudioSamples = ((plan.durationUs * plan.audioSampleRate) / 1_000_000L).coerceAtLeast(1L)
-            while (audioSamplesQueued < totalAudioSamples) {
-                checkCancelled()
-                val remaining = totalAudioSamples - audioSamplesQueued
-                val chunk = min(AUDIO_CHUNK_SAMPLES.toLong(), remaining).toInt()
-                val queued = queueSilentAudio(activeAudioCodec, plan, audioSamplesQueued, chunk)
-                if (queued == audioSamplesQueued) {
-                    drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false, timeoutUs = 10_000L)
-                    continue
-                }
-                audioSamplesQueued = queued
-                drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false)
-            }
+            audioSamplesQueued = queueAudioUntil(
+                codec = activeAudioCodec,
+                plan = plan,
+                mixer = activeMixer,
+                sink = sink,
+                samplesQueuedInput = audioSamplesQueued,
+                targetSamples = totalAudioSamples
+            )
             queueAudioEos(activeAudioCodec, plan, audioSamplesQueued)
             drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = true)
-            postProgress(listener, 99, "Writing MP4")
+
+            checkCancelled()
+            postProgress(listener, 98, "Finalizing MP4")
             sink.stop()
             muxSink = null
             outputPfd.close()
@@ -172,9 +216,12 @@ class VideoExportEngine(
             elapsedMs = System.currentTimeMillis() - startedAt
         } catch (_: ExportCancelledException) {
             cancelled = true
+        } catch (_: ExportAudioCancelledException) {
+            cancelled = true
         } catch (t: Throwable) {
             terminalError = t
         } finally {
+            runCatching { audioMixer?.close() }
             runCatching { composer?.close() }
             runCatching { codecSurface?.close() }
             runCatching { videoCodec?.stop() }
@@ -186,33 +233,78 @@ class VideoExportEngine(
             if (!success || cancelled) runCatching { appContext.contentResolver.delete(outputUri, null, null) }
             running = false
             worker = null
+
             when {
                 success -> {
                     post { listener.onProgress(100, "Export complete") }
                     post { listener.onCompleted(outputUri, plan, elapsedMs) }
                 }
                 cancelled -> post { listener.onCancelled() }
-                terminalError != null -> post { listener.onError(terminalError?.message ?: "Export failed", terminalError) }
+                terminalError != null -> post {
+                    listener.onError(humanReadableError(terminalError), terminalError)
+                }
                 else -> post { listener.onError("Export failed", null) }
             }
         }
     }
 
-    private fun queueSilentAudio(codec: MediaCodec, plan: ExportPlan, samplesQueued: Long, requestedSamples: Int): Long {
+    private fun openOutput(uri: Uri): android.os.ParcelFileDescriptor? {
+        return runCatching { appContext.contentResolver.openFileDescriptor(uri, "rwt") }.getOrNull()
+            ?: runCatching { appContext.contentResolver.openFileDescriptor(uri, "rw") }.getOrNull()
+    }
+
+    private fun queueAudioUntil(
+        codec: MediaCodec,
+        plan: ExportPlan,
+        mixer: OfflineAudioMixer,
+        sink: Mp4MuxSink,
+        samplesQueuedInput: Long,
+        targetSamples: Long
+    ): Long {
+        var samplesQueued = samplesQueuedInput
+        var stallCount = 0
+        while (samplesQueued < targetSamples) {
+            checkCancelled()
+            val remaining = targetSamples - samplesQueued
+            val requested = min(AUDIO_CHUNK_SAMPLES.toLong(), remaining).toInt()
+            val queued = queueMixedAudio(codec, plan, mixer, samplesQueued, requested)
+            if (queued == samplesQueued) {
+                drainCodec(codec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false, timeoutUs = CODEC_TIMEOUT_US)
+                if (++stallCount > MAX_AUDIO_INPUT_STALLS) error("AAC encoder input stalled")
+            } else {
+                samplesQueued = queued
+                stallCount = 0
+                drainCodec(codec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false)
+            }
+        }
+        return samplesQueued
+    }
+
+    private fun queueMixedAudio(
+        codec: MediaCodec,
+        plan: ExportPlan,
+        mixer: OfflineAudioMixer,
+        samplesQueued: Long,
+        requestedSamples: Int
+    ): Long {
         val inputIndex = codec.dequeueInputBuffer(CODEC_TIMEOUT_US)
         if (inputIndex < 0) return samplesQueued
         val input = codec.getInputBuffer(inputIndex) ?: return samplesQueued
         input.clear()
+        input.order(ByteOrder.LITTLE_ENDIAN)
         val maxSamples = input.capacity() / (AUDIO_CHANNELS * PCM_BYTES_PER_SAMPLE)
         val samples = min(requestedSamples, maxSamples).coerceAtLeast(1)
-        val bytes = samples * AUDIO_CHANNELS * PCM_BYTES_PER_SAMPLE
-        repeat(bytes) { input.put(0.toByte()) }
+        val pcm = mixer.mix(samplesQueued, samples)
+        val actualSamples = pcm.size / AUDIO_CHANNELS
+        if (actualSamples <= 0) return samplesQueued
+        pcm.forEach { input.putShort(it) }
         val ptsUs = samplesQueued * 1_000_000L / plan.audioSampleRate
-        codec.queueInputBuffer(inputIndex, 0, bytes, ptsUs, 0)
-        return samplesQueued + samples
+        codec.queueInputBuffer(inputIndex, 0, pcm.size * PCM_BYTES_PER_SAMPLE, ptsUs, 0)
+        return samplesQueued + actualSamples
     }
 
     private fun queueAudioEos(codec: MediaCodec, plan: ExportPlan, samplesQueued: Long) {
+        var stalls = 0
         while (true) {
             checkCancelled()
             val inputIndex = codec.dequeueInputBuffer(CODEC_TIMEOUT_US)
@@ -221,6 +313,7 @@ class VideoExportEngine(
                 codec.queueInputBuffer(inputIndex, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                 return
             }
+            if (++stalls > MAX_AUDIO_INPUT_STALLS) error("AAC encoder EOS input stalled")
         }
     }
 
@@ -239,7 +332,7 @@ class VideoExportEngine(
             when {
                 status == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                     if (!endOfStream) return
-                    if (idleCount++ > 500) error("$track encoder EOS timeout")
+                    if (idleCount++ > MAX_EOS_IDLE_LOOPS) error("$track encoder EOS timeout")
                 }
                 status == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> sink.onFormat(track, codec.outputFormat)
                 status >= 0 -> {
@@ -253,8 +346,19 @@ class VideoExportEngine(
         }
     }
 
+    private fun humanReadableError(t: Throwable?): String {
+        val message = t?.message.orEmpty()
+        return when {
+            message.contains("codec", ignoreCase = true) -> "This device could not complete hardware encoding. Try 720p or a shorter project."
+            message.contains("space", ignoreCase = true) -> "Not enough storage space to finish export."
+            message.contains("destination", ignoreCase = true) -> "Vedito lost access to the selected save location. Choose another destination."
+            message.isNotBlank() -> message
+            else -> "Export failed before the MP4 could be finalized."
+        }
+    }
+
     private fun checkCancelled() {
-        if (cancelRequested.get()) throw ExportCancelledException()
+        if (cancelRequested.get() || Thread.currentThread().isInterrupted) throw ExportCancelledException()
     }
 
     private fun postProgress(listener: Listener, percent: Int, message: String) {
@@ -273,6 +377,9 @@ class VideoExportEngine(
         private const val AUDIO_PRIME_SAMPLES = 1_024
         private const val AUDIO_CHUNK_SAMPLES = 2_048
         private const val CODEC_TIMEOUT_US = 10_000L
+        private const val FORMAT_READY_SPINS = 120
+        private const val MAX_AUDIO_INPUT_STALLS = 800
+        private const val MAX_EOS_IDLE_LOOPS = 800
         private const val PROGRESS_FRAME_INTERVAL = 6
     }
 }

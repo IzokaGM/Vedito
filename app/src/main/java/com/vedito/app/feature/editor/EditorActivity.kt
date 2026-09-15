@@ -3170,7 +3170,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                     launchVideoExportDocument(settings)
                 } else {
                     AlertDialog.Builder(this)
-                        .setTitle("Patch 19 export foundation")
+                        .setTitle("Export notes")
                         .setMessage(report.warnings.joinToString("\n\n"))
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Continue") { _, _ -> launchVideoExportDocument(settings) }

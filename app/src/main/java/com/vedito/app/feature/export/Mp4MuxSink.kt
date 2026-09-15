@@ -5,6 +5,7 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import java.nio.ByteBuffer
 
+/** Small muxer gate that waits for both encoder formats and enforces monotonic PTS per track. */
 internal class Mp4MuxSink(
     private val muxer: MediaMuxer
 ) {
@@ -20,11 +21,13 @@ internal class Mp4MuxSink(
     private var videoTrack = -1
     private var audioTrack = -1
     private val pending = mutableListOf<PendingSample>()
+    private val lastPtsUs = mutableMapOf(Track.VIDEO to -1L, Track.AUDIO to -1L)
     var started: Boolean = false
         private set
     private var released = false
 
     fun onFormat(track: Track, format: MediaFormat) {
+        if (released) return
         when (track) {
             Track.VIDEO -> if (videoTrack < 0) videoTrack = muxer.addTrack(format)
             Track.AUDIO -> if (audioTrack < 0) audioTrack = muxer.addTrack(format)
@@ -33,26 +36,20 @@ internal class Mp4MuxSink(
     }
 
     fun write(track: Track, source: ByteBuffer, info: MediaCodec.BufferInfo) {
-        if (info.size <= 0 || info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) return
+        if (released || info.size <= 0 || info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) return
+        val pts = normalizedPts(track, info.presentationTimeUs)
         if (!started) {
+            check(pending.size < MAX_PENDING_SAMPLES) { "Encoder produced too many samples before muxer start" }
             val duplicate = source.duplicate().apply {
                 position(info.offset)
                 limit(info.offset + info.size)
             }
             val bytes = ByteArray(info.size)
             duplicate.get(bytes)
-            pending += PendingSample(track, bytes, info.presentationTimeUs, info.flags)
+            pending += PendingSample(track, bytes, pts, info.flags)
             return
         }
-        val trackIndex = indexFor(track)
-        val duplicate = source.duplicate().apply {
-            position(info.offset)
-            limit(info.offset + info.size)
-        }
-        val normalized = MediaCodec.BufferInfo().apply {
-            set(0, info.size, info.presentationTimeUs, info.flags)
-        }
-        muxer.writeSampleData(trackIndex, duplicate.slice(), normalized)
+        writeNow(track, source, info.offset, info.size, pts, info.flags)
     }
 
     fun stop() {
@@ -69,7 +66,7 @@ internal class Mp4MuxSink(
     }
 
     private fun maybeStart() {
-        if (started || videoTrack < 0 || audioTrack < 0) return
+        if (released || started || videoTrack < 0 || audioTrack < 0) return
         muxer.start()
         started = true
         pending.forEach { sample ->
@@ -81,8 +78,29 @@ internal class Mp4MuxSink(
         pending.clear()
     }
 
+    private fun writeNow(track: Track, source: ByteBuffer, offset: Int, size: Int, pts: Long, flags: Int) {
+        val duplicate = source.duplicate().apply {
+            position(offset)
+            limit(offset + size)
+        }
+        val normalized = MediaCodec.BufferInfo().apply { set(0, size, pts, flags) }
+        muxer.writeSampleData(indexFor(track), duplicate.slice(), normalized)
+    }
+
+    private fun normalizedPts(track: Track, ptsInput: Long): Long {
+        val last = lastPtsUs.getValue(track)
+        val safe = ptsInput.coerceAtLeast(0L)
+        val normalized = if (safe <= last) last + 1L else safe
+        lastPtsUs[track] = normalized
+        return normalized
+    }
+
     private fun indexFor(track: Track): Int = when (track) {
         Track.VIDEO -> videoTrack
         Track.AUDIO -> audioTrack
     }.also { check(it >= 0) { "Muxer track is not ready: $track" } }
+
+    companion object {
+        private const val MAX_PENDING_SAMPLES = 64
+    }
 }

@@ -67,6 +67,7 @@ Completed:
 - Volume/mute/delete, fades.
 - Extract audio for normal 1× forward clips.
 - Persistence + undo/redo.
+- Major Patch 20 export parity: source-video sound + overlapping audio clips render to stereo AAC with volume/mute/fades.
 
 Pending:
 - Voice-over recording.
@@ -96,20 +97,23 @@ Pending:
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 19 establishes the first real MP4 export foundation.**
-Completed in Patch 19 foundation:
+**In progress — Major Patch 20 closes the real-audio/export-parity foundation.**
+Completed through Major Patch 20:
 - Deterministic off-screen software fallback compositor consuming canonical project state.
-- Real H.264 + AAC/MP4 output.
+- Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p @ 30fps presets + hardware surface video encoding.
-- Timing parity foundation for trim/speed/reverse/freeze through shared source mapping.
+- Shared visual timing parity for trim/speed/reverse/freeze.
 - Main visual/keyframe/stabilization/mask/chroma/color/effects/transition + overlay/text/caption frame composition.
-- Progress/cancel/error UI and partial-file cleanup.
+- Source-video audio + overlapping independent audio-track mix.
+- Audio-track volume/mute/fade parity.
+- Forward speed-audio overlap-add stretch foundation; reverse/freeze source audio follows current muted preview policy.
+- Progress/cancel/error handling, cancellation-aware audio decoding, bounded mux startup, PTS hardening and partial-file cleanup.
 
 Pending:
-- Audible source/audio-track mixer and retimed/reverse audio policy.
-- Production decoder/GPU compositor replacing MediaMetadataRetriever/software fallback.
+- Production streaming decoder/GPU compositor replacing MediaMetadataRetriever/software fallback.
 - H.265, 2K/4K where supported, FPS/bitrate controls.
 - Recovery/resume, thermal/memory/storage preflight and long-project optimization.
+- Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
 
 ## Stage 8 — AI suite
 **Pending after core/export maturity.**
@@ -186,14 +190,19 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - API 31+ hardware color preview and API 33+ chroma+color RenderEffect chaining.
   - Android-free `FrameCompositionBuilder` resolving canonical transform/mask/chroma/color/effect/transition render state.
   - Schema v18 persistence + undo/redo.
-- **Patch 19:** Production Render / Export Engine Foundation — current patch.
+- **Patch 19:** Production Render / Export Engine Foundation — locked after CI/device verification.
   - Android-free export plan/capability contract.
   - Real 720p/1080p H.264 + AAC MP4 save path.
   - Correctness-first off-screen software compositor using canonical timing/render state.
   - EGL/GLES encoder-surface bridge, progress/cancel/error handling and partial-file cleanup.
-  - Known limit: AAC is valid but silent until the export audio mixer lands.
-- **Patch 20:** Export Audio Mixer / Reliability Foundation — next.
-- **Patch 21+:** production GPU decode/compositor, H.265/4K, advanced color/audio/text, AI/templates/cloud.
+- **Major Patch 20:** Real Audio Mixer / Export Parity / Reliability — current patch.
+  - Main-video source audio + independent overlapping audio clips render into stereo AAC.
+  - Volume/mute/fade export parity plus forward speed-audio overlap-add handling.
+  - Android-free audio mix plan, seekable normalized PCM decode cache and deterministic offline mixer.
+  - Cancellation-aware audio prep, bounded mux startup, monotonic PTS and encoder stall hardening.
+  - Project schema remains v18; no duplicate saved audio state introduced.
+- **Patch 21:** Production Decoder / GPU Compositor Performance Foundation — next.
+- **Patch 22+:** H.265/4K, advanced color/audio/text, AI/templates/cloud and release hardening.
 
 ## Release gates
 Before locking a major stage:

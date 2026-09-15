@@ -4,16 +4,18 @@ Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.19.0 / project schema v18**.
+- Current patch: **0.20.0 / versionCode 20 / project schema v18**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
 - New patch requires owner confirmation unless owner already explicitly said to start.
 
-Patch 19 adds the first real off-screen export path. `ExportPlanner` is Android-free; `SoftwareFrameComposer` consumes the canonical project/composition state; `CodecInputSurface` feeds composed frames through EGL/GLES into a surface-input H.264 encoder; `VideoExportEngine` muxes video with a valid AAC track into MP4 and exposes progress/cancel/error callbacks. The editor now has an EXPORT action with 720p/1080p presets and SAF destination creation.
+Major Patch 20 replaces Patch 19's silent AAC foundation with a real deterministic audio renderer. `AudioMixPlanner` owns renderer-independent source-video/audio-track timing and gain rules. `PcmMediaDecoder` converts supported Android audio streams to seekable normalized stereo PCM. `OfflineAudioMixer` mixes main-video source sound plus independent audio clips with volume/mute/fades and lightweight overlap-add handling for forward speed changes. `VideoExportEngine` feeds mixed PCM to AAC while video frames are being rendered, then muxes both tracks through the hardened `Mp4MuxSink`.
 
-Critical architecture rule: do not bypass `ClipTimeMap`, `FrameCompositionBuilder`, `OverlayComposition`, `TextComposition`, `CaptionComposition` or the shared color/keyframe/tracking models when improving export. Replace the software fallback with a faster GPU/decoder backend later, not with duplicate project-state math.
+Preview/export ownership rules now intentionally match: main forward clips own their source sound, reverse/freeze source sound is muted, independent audio tracks can overlap and honor volume/mute/fades, and overlay-video sound stays muted. Do not add a second audio timing model in UI/export code; extend `AudioMixPlan`/`AudioMixMath`.
 
-Important Patch 19 limit: the AAC track is currently silent. Audible source-video/audio-track mixing is the next milestone and the UI explicitly warns before export. `MediaMetadataRetriever` frame extraction is also a correctness-first fallback, not final long-project performance architecture.
+Critical visual architecture rule remains: do not bypass `ClipTimeMap`, `FrameCompositionBuilder`, `OverlayComposition`, `TextComposition`, `CaptionComposition`, shared color/keyframe/tracking models or the existing project state when improving export. Replace the software frame backend later, not the project-state math.
 
-Next planned milestone: **Patch 20 — Export Audio Mixer / Reliability Foundation** unless device testing exposes a Patch 19 regression first.
+Current major remaining export bottleneck is frame decode/composition throughput: `MediaMetadataRetriever` + software Canvas is correctness-first and not the final long-project GPU path.
+
+Next planned milestone: **Patch 21 — Production Decoder / GPU Compositor Performance Foundation** unless device/CI testing exposes a Patch 20 regression first.
