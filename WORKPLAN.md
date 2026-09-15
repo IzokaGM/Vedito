@@ -39,16 +39,18 @@ Next:
 - Later speed curves built on `ClipTimeMap`.
 
 ## Stage 3 — Pro visual editing
-**In progress — keyframe foundation completed in Patch 15.**
+**In progress — keyframes + main-clip masks/chroma foundation completed through Patch 16.**
 Completed:
 - Renderer-independent clip/overlay transform keyframes.
 - Linear/Ease In/Ease Out/Ease In-Out/Hold interpolation.
 - Real preview evaluation plus timeline-safe split/trim/speed handling.
+- Main-clip rectangle/ellipse mask state with feather/invert and native preview.
+- Main-clip chroma-key parameter model with API 33+ RuntimeShader preview foundation.
 
 Pending:
 - Advanced keyframe graph/custom Bezier editor and broader property coverage.
-- Masks + feather.
-- Chroma key.
+- Overlay/PIP masks, freeform masks and mask keyframes.
+- Production shared GPU chroma compositor + eyedropper sampling.
 - Motion/object tracking.
 - Stabilization, motion blur.
 - HSL/curves/wheels/LUT.
@@ -153,15 +155,18 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Warm/Cool/Vignette/Dream/Grain real native preview overlays.
   - Fade-Black/Flash/Wipe clip-boundary transition model + duration.
   - Renderer-independent `EffectComposition`, persistence and undo/redo.
-- **Patch 15:** Keyframe Engine Foundation — current patch.
+- **Patch 15:** Keyframe Engine Foundation — locked after CI/device verification.
   - Renderer-independent local transform keyframe tracks for main clips and overlays.
   - Scale/position/rotation/opacity interpolation with Linear/Ease In/Ease Out/Ease In-Out/Hold.
   - Real preview evaluation plus add/remove/prev/next/easing controls.
   - Timeline-safe split/trim/uniform-speed remapping, persistence and undo/redo.
-- **Patch 16:** Masks / Chroma Foundation — next.
-  - Renderer-independent mask + feather/invert state and first mask preview.
-  - Chroma-key parameter model and preview foundation.
-- **Patch 17+:** tracking/stabilization/color/export, advanced audio/text, AI/templates/cloud.
+- **Patch 16:** Masks / Chroma Foundation — current patch.
+  - Renderer-independent main-clip rectangle/ellipse mask + feather/invert state.
+  - Native mask occlusion preview beneath overlays/text.
+  - Chroma-key enabled/color/tolerance/softness/spill model.
+  - API 33+ RuntimeShader live chroma preview, schema v16 persistence + undo/redo.
+- **Patch 17:** Motion Tracking / Stabilization Foundation — next.
+- **Patch 18+:** advanced color/GPU compositor/export, advanced audio/text, AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

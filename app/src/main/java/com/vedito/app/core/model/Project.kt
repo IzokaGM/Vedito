@@ -140,6 +140,32 @@ data class TransitionSpec(
     }
 }
 
+
+
+enum class MaskShape {
+    NONE,
+    RECTANGLE,
+    ELLIPSE
+}
+
+data class MaskSpec(
+    val shape: MaskShape = MaskShape.NONE,
+    val centerX: Float = 0.5f,
+    val centerY: Float = 0.5f,
+    val width: Float = 0.78f,
+    val height: Float = 0.78f,
+    val feather: Float = 0f,
+    val inverted: Boolean = false
+)
+
+data class ChromaKeySpec(
+    val enabled: Boolean = false,
+    val keyColorArgb: Int = 0xFF00FF00.toInt(),
+    val tolerance: Float = 0.22f,
+    val softness: Float = 0.10f,
+    val spill: Float = 0.15f
+)
+
 data class Clip(
     val id: String,
     val assetId: String,
@@ -148,7 +174,9 @@ data class Clip(
     val transform: ClipTransform = ClipTransform(),
     val keyframes: TransformKeyframeSet = TransformKeyframeSet(),
     val timing: ClipTiming = ClipTiming(),
-    val transitionOut: TransitionSpec = TransitionSpec()
+    val transitionOut: TransitionSpec = TransitionSpec(),
+    val mask: MaskSpec = MaskSpec(),
+    val chromaKey: ChromaKeySpec = ChromaKeySpec()
 ) {
     val sourceDurationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)

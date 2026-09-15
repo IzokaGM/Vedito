@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.15.0 / versionCode 15**
+- Current patch: **0.16.0 / versionCode 16**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -97,6 +97,7 @@ Important modules:
 - Patch 13: reusable free-text presets, shared font-family keys, shadow/letter-spacing style state, deterministic Fade/Pop/Slide-Up text motion, expanded caption presets plus caption font/animation controls, undo/redo and schema v13 persistence.
 - Patch 14: timed FX track, real Warm/Cool/Vignette/Dream/Grain native preview overlays, effect intensity, Fade-Black/Flash/Wipe clip-boundary transitions, renderer-independent `EffectComposition`, transition-safe split/duplicate semantics, undo/redo and schema v14 persistence.
 - Patch 15: renderer-independent transform keyframes for main clips + overlays, deterministic interpolation/easing, real preview evaluation, keyframe navigation/edit controls, timeline-safe split/trim/speed handling, undo/redo and schema v15 persistence.
+- Patch 16: renderer-independent main-clip rectangle/ellipse mask state with size/position/feather/invert, real native occlusion preview, chroma-key state with tolerance/softness/spill, API 33+ RuntimeShader chroma preview, undo/redo and schema v16 persistence.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -114,15 +115,22 @@ Important modules:
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
-- Masks/chroma/tracking/stabilization; keyframes exist for clip/overlay transform only, with advanced graphs/property coverage still pending.
+- Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
+- Tracking/stabilization; keyframes exist for clip/overlay transform only, with advanced graphs/property coverage still pending.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
+## Patch 16 behavior/limits
+- Main video clips persist rectangle/ellipse mask shape, center, size, feather and invert state.
+- `MaskPreviewView` gives a real native occlusion preview beneath overlay/text/caption layers. Feather is a lightweight preview approximation; export must use the same `MaskSpec` in the future GPU compositor.
+- Chroma key persists enabled/key-color/tolerance/softness/spill. RuntimeShader live keying is active on API 33+; API 26–32 preserve/edit the model until the shared GPU compositor replaces this preview path.
+- Patch 16 intentionally targets main clips first; overlay/PIP mask/chroma will reuse the same renderer-independent model later.
+
 ## Next milestone
-**Patch 16 — Masks / Chroma Foundation**
-- renderer-independent mask state + feather/invert,
-- first practical rectangular/ellipse mask preview path,
-- chroma-key parameter model + preview foundation,
-- persistence + undo/redo with future GPU/export compatibility.
+**Patch 17 — Motion Tracking / Stabilization Foundation**
+- renderer-independent tracking data/anchor model,
+- manual tracking anchor workflow suitable for later detector assistance,
+- stabilization parameter/state foundation,
+- persistence + undo/redo + export-compatible data ownership.
 
 See `WORKPLAN.md` for the full roadmap.

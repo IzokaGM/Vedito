@@ -21,6 +21,9 @@ import com.vedito.app.core.model.TransitionKind
 import com.vedito.app.core.model.TransitionSpec
 import com.vedito.app.core.model.VideoEffectKind
 import com.vedito.app.core.model.MediaAsset
+import com.vedito.app.core.model.MaskShape
+import com.vedito.app.core.model.MaskSpec
+import com.vedito.app.core.model.ChromaKeySpec
 import com.vedito.app.core.model.OverlayAsset
 import com.vedito.app.core.model.OverlayClip
 import com.vedito.app.core.model.OverlayMediaType
@@ -34,6 +37,7 @@ import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
+import com.vedito.app.core.visual.MaskChromaComposition
 import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.text.TextTimelineEditor
@@ -166,7 +170,9 @@ class ProjectRepository(context: Context) {
                         transform = parseClipTransform(clip.optJSONObject("transform")),
                         keyframes = parseTransformKeyframes(clip.optJSONObject("keyframes")),
                         timing = parseClipTiming(clip.optJSONObject("timing"), clip.optInt("sourceStartMs", 0), clip.optInt("sourceEndMs", 0)),
-                        transitionOut = parseTransition(clip.optJSONObject("transitionOut"))
+                        transitionOut = parseTransition(clip.optJSONObject("transitionOut")),
+                        mask = parseMask(clip.optJSONObject("mask")),
+                        chromaKey = parseChromaKey(clip.optJSONObject("chromaKey"))
                     ).let { parsed ->
                         parsed.copy(keyframes = KeyframeEngine.normalize(parsed.keyframes, parsed.durationMs))
                     }
@@ -206,6 +212,34 @@ class ProjectRepository(context: Context) {
                 cropRight = json.optDouble("cropRight", 0.0).toFloat(),
                 cropBottom = json.optDouble("cropBottom", 0.0).toFloat(),
                 fitMode = fitMode
+            )
+        )
+    }
+
+    private fun parseMask(json: JSONObject?): MaskSpec {
+        if (json == null) return MaskSpec()
+        return MaskChromaComposition.normalize(
+            MaskSpec(
+                shape = enumValueOrDefault(json.optString("shape"), MaskShape.NONE),
+                centerX = json.optDouble("centerX", 0.5).toFloat(),
+                centerY = json.optDouble("centerY", 0.5).toFloat(),
+                width = json.optDouble("width", 0.78).toFloat(),
+                height = json.optDouble("height", 0.78).toFloat(),
+                feather = json.optDouble("feather", 0.0).toFloat(),
+                inverted = json.optBoolean("inverted", false)
+            )
+        )
+    }
+
+    private fun parseChromaKey(json: JSONObject?): ChromaKeySpec {
+        if (json == null) return ChromaKeySpec()
+        return MaskChromaComposition.normalize(
+            ChromaKeySpec(
+                enabled = json.optBoolean("enabled", false),
+                keyColorArgb = json.optInt("keyColorArgb", 0xFF00FF00.toInt()),
+                tolerance = json.optDouble("tolerance", 0.22).toFloat(),
+                softness = json.optDouble("softness", 0.10).toFloat(),
+                spill = json.optDouble("spill", 0.15).toFloat()
             )
         )
     }
@@ -447,6 +481,8 @@ class ProjectRepository(context: Context) {
                     .put("keyframes", transformKeyframesToJson(clip.keyframes))
                     .put("timing", timingToJson(clip.timing))
                     .put("transitionOut", transitionToJson(clip.transitionOut))
+                    .put("mask", maskToJson(clip.mask))
+                    .put("chromaKey", chromaKeyToJson(clip.chromaKey))
             )
         }
 
@@ -599,6 +635,28 @@ class ProjectRepository(context: Context) {
     }
 
 
+    private fun maskToJson(mask: MaskSpec): JSONObject {
+        val safe = MaskChromaComposition.normalize(mask)
+        return JSONObject()
+            .put("shape", safe.shape.name)
+            .put("centerX", safe.centerX.toDouble())
+            .put("centerY", safe.centerY.toDouble())
+            .put("width", safe.width.toDouble())
+            .put("height", safe.height.toDouble())
+            .put("feather", safe.feather.toDouble())
+            .put("inverted", safe.inverted)
+    }
+
+    private fun chromaKeyToJson(chroma: ChromaKeySpec): JSONObject {
+        val safe = MaskChromaComposition.normalize(chroma)
+        return JSONObject()
+            .put("enabled", safe.enabled)
+            .put("keyColorArgb", safe.keyColorArgb)
+            .put("tolerance", safe.tolerance.toDouble())
+            .put("softness", safe.softness.toDouble())
+            .put("spill", safe.spill.toDouble())
+    }
+
     private fun parseTransformKeyframes(json: JSONObject?): TransformKeyframeSet {
         if (json == null) return TransformKeyframeSet()
 
@@ -701,6 +759,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 15
+        private const val SCHEMA_VERSION = 16
     }
 }

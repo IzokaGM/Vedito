@@ -94,6 +94,12 @@
                 android:layout_height="match_parent"
                 android:visibility="gone" />
 
+            <com.vedito.app.feature.editor.visual.MaskPreviewView
+                android:id="@+id/maskPreviewLayer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
             <FrameLayout
                 android:id="@+id/overlayPreviewLayer"
                 android:layout_width="match_parent"
@@ -198,6 +204,13 @@
             android:layout_height="42dp"
             android:layout_marginTop="4dp"
             android:contentDescription="Visual transform controls" />
+
+        <com.vedito.app.feature.editor.visual.MaskChromaToolbarView
+            android:id="@+id/maskChromaToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginTop="2dp"
+            android:contentDescription="Mask and chroma key controls" />
 
         <com.vedito.app.feature.editor.timing.TimingToolbarView
             android:id="@+id/timingToolbar"

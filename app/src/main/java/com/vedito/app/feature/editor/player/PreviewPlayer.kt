@@ -1,18 +1,24 @@
 package com.vedito.app.feature.editor.player
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
 import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import android.view.TextureView
+import com.vedito.app.core.model.ChromaKeySpec
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTransform
+import com.vedito.app.core.visual.MaskChromaComposition
 import com.vedito.app.core.visual.VisualTransformMath
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -44,6 +50,7 @@ class PreviewPlayer(
     private var pendingAutoPlay = false
     private var loadGeneration = 0
     private var visualTransform = ClipTransform()
+    private var chromaKey = ChromaKeySpec()
 
     private var timingMode = ClipPlaybackMode.FORWARD
     private var playbackSpeed = 1f
@@ -93,6 +100,13 @@ class PreviewPlayer(
         visualTransform = VisualTransformMath.normalize(transform)
         textureView.alpha = visualTransform.opacity
         applyVideoTransform(textureView.width, textureView.height)
+    }
+
+    fun setChromaKey(spec: ChromaKeySpec) {
+        val safe = MaskChromaComposition.normalize(spec)
+        if (safe == chromaKey) return
+        chromaKey = safe
+        applyChromaKeyPreview()
     }
 
     fun configureTiming(
@@ -170,6 +184,7 @@ class PreviewPlayer(
     override fun onSurfaceTextureAvailable(surfaceTexture: android.graphics.SurfaceTexture, width: Int, height: Int) {
         textureView.alpha = visualTransform.opacity
         applyVideoTransform(width, height)
+        applyChromaKeyPreview()
         mediaUri?.let(::prepare)
     }
 
@@ -206,6 +221,7 @@ class PreviewPlayer(
                     this@PreviewPlayer.videoHeight = ready.videoHeight
                     textureView.alpha = visualTransform.opacity
                     applyVideoTransform(textureView.width, textureView.height)
+                    applyChromaKeyPreview()
                     listener.onReady(uri, durationMs)
                     listener.onPlaybackStateChanged(false)
 
@@ -255,6 +271,34 @@ class PreviewPlayer(
         } finally {
             surface.release()
         }
+    }
+
+    private fun applyChromaKeyPreview() {
+        if (Build.VERSION.SDK_INT < 31) return
+        if (!chromaKey.enabled) {
+            textureView.setRenderEffect(null)
+            return
+        }
+        if (Build.VERSION.SDK_INT < 33) {
+            // Renderer-independent state is still preserved. RuntimeShader preview needs API 33+.
+            textureView.setRenderEffect(null)
+            return
+        }
+
+        runCatching {
+            val safe = MaskChromaComposition.normalize(chromaKey)
+            val shader = RuntimeShader(CHROMA_SHADER)
+            shader.setFloatUniform(
+                "keyColor",
+                Color.red(safe.keyColorArgb) / 255f,
+                Color.green(safe.keyColorArgb) / 255f,
+                Color.blue(safe.keyColorArgb) / 255f
+            )
+            shader.setFloatUniform("tolerance", safe.tolerance)
+            shader.setFloatUniform("softness", safe.softness)
+            shader.setFloatUniform("spill", safe.spill)
+            textureView.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "content"))
+        }.onFailure { textureView.setRenderEffect(null) }
     }
 
     private fun startForward(active: MediaPlayer, target: Int) {
@@ -387,6 +431,24 @@ class PreviewPlayer(
     }
 
     companion object {
+        private const val CHROMA_SHADER = """
+            uniform shader content;
+            uniform float3 keyColor;
+            uniform float tolerance;
+            uniform float softness;
+            uniform float spill;
+
+            half4 main(float2 p) {
+                half4 src = content.eval(p);
+                float3 rgb = float3(src.rgb);
+                float distanceFromKey = distance(rgb, keyColor);
+                float alpha = smoothstep(tolerance, tolerance + max(softness, 0.001), distanceFromKey);
+                float proximity = 1.0 - smoothstep(tolerance, tolerance + 0.25, distanceFromKey);
+                float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+                float3 despilled = mix(rgb, float3(luma), proximity * spill);
+                return half4(half3(despilled), src.a * half(alpha));
+            }
+        """
         private const val REVERSE_SEEK_INTERVAL_MS = 85L
     }
 }
