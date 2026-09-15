@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /**
- * Patch 22 production export pipeline.
- * Video uses bounded streaming decode plus a hybrid CPU/GPU compositor; mixed PCM remains deterministic.
+ * Patch 23 production export pipeline.
+ * Video uses bounded forward/reverse decode caches plus a GPU main-source graph; mixed PCM remains deterministic.
  */
 class VideoExportEngine(
     context: Context
@@ -156,7 +156,11 @@ class VideoExportEngine(
             drainCodec(activeAudioCodec, Mp4MuxSink.Track.AUDIO, sink, endOfStream = false)
 
             val firstFrame = frameComposer.composeHybrid(0)
-            activeCodecSurface.draw(firstFrame, 0L)
+            try {
+                activeCodecSurface.draw(firstFrame, 0L)
+            } finally {
+                firstFrame.close()
+            }
             drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
 
             var spin = 0
@@ -174,7 +178,11 @@ class VideoExportEngine(
                     .coerceAtMost((plan.durationMs - 1).coerceAtLeast(0).toLong())
                     .toInt()
                 val frame = frameComposer.composeHybrid(positionMs)
-                activeCodecSurface.draw(frame, frameIndex.toLong() * frameDurationNs)
+                try {
+                    activeCodecSurface.draw(frame, frameIndex.toLong() * frameDurationNs)
+                } finally {
+                    frame.close()
+                }
                 drainCodec(activeVideoCodec, Mp4MuxSink.Track.VIDEO, sink, endOfStream = false)
 
                 val targetAudioSamples = min(
@@ -194,7 +202,7 @@ class VideoExportEngine(
                     .toInt().coerceIn(11, 88)
                 if (frameIndex % PROGRESS_FRAME_INTERVAL == 0 || frameIndex == plan.frameCount - 1) {
                     val decode = frameComposer.performanceSnapshot().shortLabel()
-                    postProgress(listener, percent, "Rendering ${frameIndex + 1}/${plan.frameCount} · $decode · GPU post")
+                    postProgress(listener, percent, "Rendering ${frameIndex + 1}/${plan.frameCount} · $decode · GPU source/post")
                 }
             }
 

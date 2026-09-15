@@ -92,13 +92,13 @@ Completed:
 - Persistence + undo/redo.
 
 Pending:
-- Full production GPU shader stack for source transforms/chroma/color plus LUT/HSL/curves/wheels. Patch 21 moves supported timed post effects/transitions to export GLES; Patch 22 extends output profiles and device-aware encoder selection.
+- HSL/curves/wheels/LUT expansion and richer shader library. Patch 23 now moves the canonical main-source transform/chroma/color/mask chain onto export GLES when the post stack is compatible.
 - Dual-source cross-dissolve and richer transition library.
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 22 adds high-resolution profiles, codec controls and device-aware export preflight on top of the Patch 21 streaming/GPU foundation.**
-Completed through Patch 22:
+**In progress — Patch 23 adds a GPU main-source graph and bounded reverse MediaCodec cache on top of Patch 22 codec/preflight controls.**
+Completed through Patch 23:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
@@ -113,9 +113,12 @@ Completed through Patch 22:
 - Reused decoded bitmaps and GL texture storage to reduce per-frame allocation churn.
 - MediaCodec size/rate/surface preflight, effective bitrate clamping and estimated MP4 size before destination selection.
 - High-resolution main-source decode path up to 3840px while overlay/static decode remains bounded for memory control.
+- Encoder-surface main-source GPU graph for crop/fit/transform/keyframe+stabilization result/chroma/color/opacity/mask when post stack is GPU eligible.
+- Streaming source-frame leases pin decoder-owned bitmaps until encoder draw completes.
+- Reverse clips prefer previous-sync MediaCodec forward decode with a memory-bounded decoded-tail cache and automatic MMR fallback.
 
 Pending:
-- Full source-texture GPU graph for chroma/color/transform/masks and production reverse decode/cache.
+- Zero-copy OES/SurfaceTexture decoder-to-GPU source path and broader GPU overlay graph.
 - Arbitrary/manual bitrate controls beyond the safe Patch 22 planner.
 - Recovery/resume, deeper thermal/memory/storage destination preflight and long-project optimization.
 - Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
@@ -212,14 +215,20 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - LRU decoder pool + reusable decoded/output bitmaps reduce long-project allocation pressure.
   - Hybrid base/overlay export planes move supported timed effects/transitions + final alpha composition onto the encoder GLES surface.
   - GL texture storage is reused across frames; schema remains v18.
-- **Patch 22:** High-Resolution / Codec Controls & Export Preflight Foundation — current patch.
+- **Patch 22:** High-Resolution / Codec Controls & Export Preflight Foundation — locked after CI/device verification.
   - 720p/1080p/1440p/2160p output profiles with 24/30/60fps.
   - H.264 AVC + H.265 HEVC selection with deterministic profile-aware bitrate planning.
   - MediaCodec surface/size/rate preflight, hardware-first exact encoder selection and safe bitrate clamping.
   - Preflight summary includes estimated output size and compatibility/performance warnings before SAF destination selection.
   - Main-source high-resolution decode may reach 3840px while overlay/static decode remains bounded; schema stays v18.
-- **Patch 23:** Full GPU Source Graph / Reverse Decode Cache Foundation — next.
-- **Patch 24+:** advanced color/audio/text, AI/templates/cloud and release hardening.
+- **Patch 23:** Full GPU Source Graph / Reverse Decode Cache Foundation — current patch.
+  - Android-free `GpuSourceGraphPlanner` keeps crop/fit/transform/chroma/color/mask execution tied to canonical frame state.
+  - Main-source stages run in encoder GLES when the timed post stack is GPU compatible; Grain preserves CPU fallback.
+  - `FrameLease` pins decoder-owned main-source bitmaps through encoder upload.
+  - Reverse clips prefer bounded MediaCodec previous-sync forward-decode cache before MMR fallback.
+  - Schema remains v18.
+- **Patch 24:** Export Recovery / Long-Project Hardening Foundation — next.
+- **Patch 25+:** advanced color/audio/text, AI/templates/cloud and release hardening.
 
 ## Release gates
 Before locking a major stage:

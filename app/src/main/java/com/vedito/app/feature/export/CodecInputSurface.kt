@@ -8,6 +8,7 @@ import android.opengl.GLUtils
 import android.view.Surface
 import com.vedito.app.core.export.GpuEffectSlot
 import com.vedito.app.core.export.GpuPostProcessPlan
+import com.vedito.app.core.export.GpuSourceGraphPlan
 import com.vedito.app.core.model.TransitionKind
 import com.vedito.app.core.model.VideoEffectKind
 import java.io.Closeable
@@ -16,9 +17,11 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * Patch 21 EGL/GLES encoder bridge.
- * Reuses texture storage, applies supported timed post effects/transitions on GPU, then alpha-composites
- * the overlay plane before presenting the frame to MediaCodec.
+ * Patch 23 EGL/GLES encoder bridge.
+ *
+ * The main decoded source can now stay as a source texture while crop/fit/transform, chroma,
+ * color grading, opacity and mask are evaluated in the encoder shader. CPU base-plane upload remains
+ * as a correctness fallback for unsupported post stacks (currently Grain) and decoder failures.
  */
 class CodecInputSurface(
     private val surface: Surface
@@ -27,18 +30,40 @@ class CodecInputSurface(
     private var eglContext = EGL14.EGL_NO_CONTEXT
     private var eglSurface = EGL14.EGL_NO_SURFACE
     private var program = 0
-    private var baseTexture = 0
+    private var sourceTexture = 0
     private var overlayTexture = 0
-    private var baseTextureWidth = 0
-    private var baseTextureHeight = 0
+    private var sourceTextureWidth = 0
+    private var sourceTextureHeight = 0
     private var overlayTextureWidth = 0
     private var overlayTextureHeight = 0
 
     private var positionHandle = 0
     private var texCoordHandle = 0
-    private var baseSamplerHandle = 0
+    private var sourceSamplerHandle = 0
     private var overlaySamplerHandle = 0
     private var frameSizeHandle = 0
+
+    private var sourceGraphEnabledHandle = 0
+    private var cropRectHandle = 0
+    private var contentSizeHandle = 0
+    private var sourceCenterHandle = 0
+    private var rotationHandle = 0
+    private var flipHandle = 0
+    private var opacityHandle = 0
+    private var chromaEnabledHandle = 0
+    private var chromaKeyHandle = 0
+    private var chromaToleranceHandle = 0
+    private var chromaSoftnessHandle = 0
+    private var chromaSpillHandle = 0
+    private val colorRowHandles = IntArray(4)
+    private var colorBiasHandle = 0
+    private var maskShapeHandle = 0
+    private var maskCenterHandle = 0
+    private var maskSizeHandle = 0
+    private var maskFeatherHandle = 0
+    private var maskInvertedHandle = 0
+    private var backgroundHandle = 0
+
     private val effectKindHandles = IntArray(EFFECT_SLOTS)
     private val effectIntensityHandles = IntArray(EFFECT_SLOTS)
     private var transitionKindHandle = 0
@@ -68,7 +93,17 @@ class CodecInputSurface(
     }
 
     fun draw(frame: HybridComposedFrame, presentationTimeNs: Long) {
-        draw(frame.basePlane, frame.overlayPlane, frame.gpuPostProcess, presentationTimeNs)
+        val source = if (frame.usesGpuSourceGraph) requireNotNull(frame.sourcePlane) else frame.basePlane
+        val graph = if (frame.usesGpuSourceGraph) frame.sourceGraph else GpuSourceGraphPlan.disabled()
+        drawInternal(
+            sourceBitmap = source,
+            overlayBitmap = frame.overlayPlane,
+            outputWidth = frame.basePlane.width,
+            outputHeight = frame.basePlane.height,
+            sourceGraph = graph,
+            postProcess = frame.gpuPostProcess,
+            presentationTimeNs = presentationTimeNs
+        )
     }
 
     fun draw(
@@ -77,26 +112,46 @@ class CodecInputSurface(
         postProcess: GpuPostProcessPlan,
         presentationTimeNs: Long
     ) {
-        require(baseBitmap.width == overlayBitmap.width && baseBitmap.height == overlayBitmap.height) {
-            "Export planes must have matching dimensions"
+        drawInternal(
+            sourceBitmap = baseBitmap,
+            overlayBitmap = overlayBitmap,
+            outputWidth = baseBitmap.width,
+            outputHeight = baseBitmap.height,
+            sourceGraph = GpuSourceGraphPlan.disabled(),
+            postProcess = postProcess,
+            presentationTimeNs = presentationTimeNs
+        )
+    }
+
+    private fun drawInternal(
+        sourceBitmap: Bitmap,
+        overlayBitmap: Bitmap,
+        outputWidth: Int,
+        outputHeight: Int,
+        sourceGraph: GpuSourceGraphPlan,
+        postProcess: GpuPostProcessPlan,
+        presentationTimeNs: Long
+    ) {
+        require(outputWidth == overlayBitmap.width && outputHeight == overlayBitmap.height) {
+            "Export overlay plane must match output dimensions"
         }
         makeCurrent()
-        GLES20.glViewport(0, 0, baseBitmap.width, baseBitmap.height)
+        GLES20.glViewport(0, 0, outputWidth, outputHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
 
         uploadBitmap(
-            texture = baseTexture,
+            texture = sourceTexture,
             textureUnit = GLES20.GL_TEXTURE0,
-            bitmap = baseBitmap,
-            currentWidth = baseTextureWidth,
-            currentHeight = baseTextureHeight
+            bitmap = sourceBitmap,
+            currentWidth = sourceTextureWidth,
+            currentHeight = sourceTextureHeight
         ).also {
-            baseTextureWidth = it.first
-            baseTextureHeight = it.second
+            sourceTextureWidth = it.first
+            sourceTextureHeight = it.second
         }
-        GLES20.glUniform1i(baseSamplerHandle, 0)
+        GLES20.glUniform1i(sourceSamplerHandle, 0)
 
         uploadBitmap(
             texture = overlayTexture,
@@ -109,7 +164,8 @@ class CodecInputSurface(
             overlayTextureHeight = it.second
         }
         GLES20.glUniform1i(overlaySamplerHandle, 1)
-        GLES20.glUniform2f(frameSizeHandle, baseBitmap.width.toFloat(), baseBitmap.height.toFloat())
+        GLES20.glUniform2f(frameSizeHandle, outputWidth.toFloat(), outputHeight.toFloat())
+        applySourceUniforms(sourceGraph)
         applyPostUniforms(postProcess)
 
         vertexBuffer.position(0)
@@ -130,8 +186,8 @@ class CodecInputSurface(
 
     override fun close() {
         runCatching { makeCurrent() }
-        if (baseTexture != 0 || overlayTexture != 0) {
-            GLES20.glDeleteTextures(2, intArrayOf(baseTexture, overlayTexture), 0)
+        if (sourceTexture != 0 || overlayTexture != 0) {
+            GLES20.glDeleteTextures(2, intArrayOf(sourceTexture, overlayTexture), 0)
         }
         if (program != 0) GLES20.glDeleteProgram(program)
         if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
@@ -167,6 +223,37 @@ class CodecInputSurface(
             GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, bitmap)
         }
         return bitmap.width to bitmap.height
+    }
+
+    private fun applySourceUniforms(plan: GpuSourceGraphPlan) {
+        GLES20.glUniform1f(sourceGraphEnabledHandle, if (plan.enabled) 1f else 0f)
+        GLES20.glUniform4f(cropRectHandle, plan.cropLeft, plan.cropTop, plan.cropWidth, plan.cropHeight)
+        GLES20.glUniform2f(contentSizeHandle, plan.contentWidthPx, plan.contentHeightPx)
+        GLES20.glUniform2f(sourceCenterHandle, plan.centerXPx, plan.centerYPx)
+        GLES20.glUniform1f(rotationHandle, plan.rotationDegrees)
+        GLES20.glUniform2f(flipHandle, plan.flipX, plan.flipY)
+        GLES20.glUniform1f(opacityHandle, plan.opacity)
+        GLES20.glUniform1f(chromaEnabledHandle, if (plan.chromaEnabled) 1f else 0f)
+        GLES20.glUniform3f(chromaKeyHandle, plan.chromaKeyR, plan.chromaKeyG, plan.chromaKeyB)
+        GLES20.glUniform1f(chromaToleranceHandle, plan.chromaTolerance)
+        GLES20.glUniform1f(chromaSoftnessHandle, plan.chromaSoftness)
+        GLES20.glUniform1f(chromaSpillHandle, plan.chromaSpill)
+
+        val m = plan.colorMatrix
+        if (m.size >= 20) {
+            GLES20.glUniform4f(colorRowHandles[0], m[0], m[1], m[2], m[3])
+            GLES20.glUniform4f(colorRowHandles[1], m[5], m[6], m[7], m[8])
+            GLES20.glUniform4f(colorRowHandles[2], m[10], m[11], m[12], m[13])
+            GLES20.glUniform4f(colorRowHandles[3], m[15], m[16], m[17], m[18])
+            GLES20.glUniform4f(colorBiasHandle, m[4], m[9], m[14], m[19])
+        }
+
+        GLES20.glUniform1f(maskShapeHandle, plan.maskShapeCode.toFloat())
+        GLES20.glUniform2f(maskCenterHandle, plan.maskCenterX, plan.maskCenterY)
+        GLES20.glUniform2f(maskSizeHandle, plan.maskWidth, plan.maskHeight)
+        GLES20.glUniform1f(maskFeatherHandle, plan.maskFeather)
+        GLES20.glUniform1f(maskInvertedHandle, if (plan.maskInverted) 1f else 0f)
+        GLES20.glUniform3f(backgroundHandle, plan.backgroundR, plan.backgroundG, plan.backgroundB)
     }
 
     private fun applyPostUniforms(planInput: GpuPostProcessPlan) {
@@ -229,9 +316,31 @@ class CodecInputSurface(
         program = linkProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         positionHandle = GLES20.glGetAttribLocation(program, "aPosition")
         texCoordHandle = GLES20.glGetAttribLocation(program, "aTexCoord")
-        baseSamplerHandle = GLES20.glGetUniformLocation(program, "uBaseTexture")
+        sourceSamplerHandle = GLES20.glGetUniformLocation(program, "uSourceTexture")
         overlaySamplerHandle = GLES20.glGetUniformLocation(program, "uOverlayTexture")
         frameSizeHandle = GLES20.glGetUniformLocation(program, "uFrameSize")
+
+        sourceGraphEnabledHandle = GLES20.glGetUniformLocation(program, "uSourceGraphEnabled")
+        cropRectHandle = GLES20.glGetUniformLocation(program, "uCropRect")
+        contentSizeHandle = GLES20.glGetUniformLocation(program, "uContentSize")
+        sourceCenterHandle = GLES20.glGetUniformLocation(program, "uSourceCenter")
+        rotationHandle = GLES20.glGetUniformLocation(program, "uRotationDegrees")
+        flipHandle = GLES20.glGetUniformLocation(program, "uFlip")
+        opacityHandle = GLES20.glGetUniformLocation(program, "uOpacity")
+        chromaEnabledHandle = GLES20.glGetUniformLocation(program, "uChromaEnabled")
+        chromaKeyHandle = GLES20.glGetUniformLocation(program, "uChromaKey")
+        chromaToleranceHandle = GLES20.glGetUniformLocation(program, "uChromaTolerance")
+        chromaSoftnessHandle = GLES20.glGetUniformLocation(program, "uChromaSoftness")
+        chromaSpillHandle = GLES20.glGetUniformLocation(program, "uChromaSpill")
+        for (index in 0..3) colorRowHandles[index] = GLES20.glGetUniformLocation(program, "uColorRow$index")
+        colorBiasHandle = GLES20.glGetUniformLocation(program, "uColorBias")
+        maskShapeHandle = GLES20.glGetUniformLocation(program, "uMaskShape")
+        maskCenterHandle = GLES20.glGetUniformLocation(program, "uMaskCenter")
+        maskSizeHandle = GLES20.glGetUniformLocation(program, "uMaskSize")
+        maskFeatherHandle = GLES20.glGetUniformLocation(program, "uMaskFeather")
+        maskInvertedHandle = GLES20.glGetUniformLocation(program, "uMaskInverted")
+        backgroundHandle = GLES20.glGetUniformLocation(program, "uBackground")
+
         transitionKindHandle = GLES20.glGetUniformLocation(program, "uTransitionKind")
         transitionProgressHandle = GLES20.glGetUniformLocation(program, "uTransitionProgress")
         transitionStrengthHandle = GLES20.glGetUniformLocation(program, "uTransitionStrength")
@@ -239,15 +348,15 @@ class CodecInputSurface(
             effectKindHandles[index] = GLES20.glGetUniformLocation(program, "uEffectKind$index")
             effectIntensityHandles[index] = GLES20.glGetUniformLocation(program, "uEffectIntensity$index")
         }
-        check(positionHandle >= 0 && texCoordHandle >= 0 && baseSamplerHandle >= 0 && overlaySamplerHandle >= 0) {
+        check(positionHandle >= 0 && texCoordHandle >= 0 && sourceSamplerHandle >= 0 && overlaySamplerHandle >= 0) {
             "Invalid GL shader handles"
         }
 
         val textures = IntArray(2)
         GLES20.glGenTextures(2, textures, 0)
-        baseTexture = textures[0]
+        sourceTexture = textures[0]
         overlayTexture = textures[1]
-        configureTexture(baseTexture)
+        configureTexture(sourceTexture)
         configureTexture(overlayTexture)
     }
 
@@ -320,9 +429,34 @@ class CodecInputSurface(
         """
         private const val FRAGMENT_SHADER = """
             precision mediump float;
-            uniform sampler2D uBaseTexture;
+            uniform sampler2D uSourceTexture;
             uniform sampler2D uOverlayTexture;
             uniform vec2 uFrameSize;
+
+            uniform float uSourceGraphEnabled;
+            uniform vec4 uCropRect;
+            uniform vec2 uContentSize;
+            uniform vec2 uSourceCenter;
+            uniform float uRotationDegrees;
+            uniform vec2 uFlip;
+            uniform float uOpacity;
+            uniform float uChromaEnabled;
+            uniform vec3 uChromaKey;
+            uniform float uChromaTolerance;
+            uniform float uChromaSoftness;
+            uniform float uChromaSpill;
+            uniform vec4 uColorRow0;
+            uniform vec4 uColorRow1;
+            uniform vec4 uColorRow2;
+            uniform vec4 uColorRow3;
+            uniform vec4 uColorBias;
+            uniform float uMaskShape;
+            uniform vec2 uMaskCenter;
+            uniform vec2 uMaskSize;
+            uniform float uMaskFeather;
+            uniform float uMaskInverted;
+            uniform vec3 uBackground;
+
             uniform float uEffectKind0;
             uniform float uEffectKind1;
             uniform float uEffectKind2;
@@ -335,6 +469,57 @@ class CodecInputSurface(
             uniform float uTransitionProgress;
             uniform float uTransitionStrength;
             varying vec2 vTexCoord;
+
+            vec4 colorMatrix(vec4 color) {
+                return vec4(
+                    dot(uColorRow0, color) + uColorBias.r,
+                    dot(uColorRow1, color) + uColorBias.g,
+                    dot(uColorRow2, color) + uColorBias.b,
+                    dot(uColorRow3, color) + uColorBias.a
+                );
+            }
+
+            vec4 sourceGraph(vec2 uv) {
+                if (uSourceGraphEnabled < 0.5) return texture2D(uSourceTexture, uv);
+
+                vec2 p = uv * uFrameSize - uSourceCenter;
+                float angle = radians(uRotationDegrees);
+                float c = cos(angle);
+                float s = sin(angle);
+                // Inverse Android Canvas rotation in y-down output coordinates.
+                vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
+                q /= max(uContentSize, vec2(1.0));
+                q /= uFlip;
+                vec2 localUv = q + vec2(0.5);
+                if (localUv.x < 0.0 || localUv.x > 1.0 || localUv.y < 0.0 || localUv.y > 1.0) {
+                    return vec4(uBackground, 1.0);
+                }
+
+                vec2 sampleUv = uCropRect.xy + localUv * uCropRect.zw;
+                vec4 color = texture2D(uSourceTexture, sampleUv);
+                if (uChromaEnabled > 0.5) {
+                    float distanceToKey = distance(color.rgb, uChromaKey);
+                    float alphaFactor = smoothstep(
+                        uChromaTolerance,
+                        uChromaTolerance + max(uChromaSoftness, 0.001),
+                        distanceToKey
+                    );
+                    float proximity = 1.0 - smoothstep(
+                        uChromaTolerance,
+                        uChromaTolerance + 0.25,
+                        distanceToKey
+                    );
+                    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+                    float spillMix = clamp(proximity * uChromaSpill, 0.0, 1.0);
+                    color.rgb = mix(color.rgb, vec3(luma), spillMix);
+                    color.a *= alphaFactor;
+                }
+                color = colorMatrix(color);
+                color = clamp(color, 0.0, 1.0);
+                color.a *= clamp(uOpacity, 0.0, 1.0);
+                vec3 rgb = mix(uBackground, color.rgb, color.a);
+                return vec4(rgb, 1.0);
+            }
 
             vec4 applyEffect(vec4 color, float kind, float intensity, vec2 uv) {
                 if (kind < 0.5 || intensity <= 0.0) return color;
@@ -378,15 +563,35 @@ class CodecInputSurface(
                 return color;
             }
 
+            float maskVisibility(vec2 uv) {
+                if (uSourceGraphEnabled < 0.5 || uMaskShape < 0.5) return 1.0;
+                vec2 halfSize = max(uMaskSize * 0.5, vec2(0.0001));
+                vec2 normalized = (uv - uMaskCenter) / halfSize;
+                float feather = clamp(uMaskFeather, 0.0, 0.30);
+                float edge;
+                if (uMaskShape < 1.5) {
+                    edge = max(abs(normalized.x), abs(normalized.y));
+                } else {
+                    edge = length(normalized);
+                }
+                float inside = 1.0 - smoothstep(max(0.0, 1.0 - feather), 1.0 + feather, edge);
+                if (feather <= 0.0001) inside = edge <= 1.0 ? 1.0 : 0.0;
+                return uMaskInverted > 0.5 ? 1.0 - inside : inside;
+            }
+
             void main() {
-                vec4 base = texture2D(uBaseTexture, vTexCoord);
+                vec4 base = sourceGraph(vTexCoord);
                 base = applyEffect(base, uEffectKind0, uEffectIntensity0, vTexCoord);
                 base = applyEffect(base, uEffectKind1, uEffectIntensity1, vTexCoord);
                 base = applyEffect(base, uEffectKind2, uEffectIntensity2, vTexCoord);
                 base = applyEffect(base, uEffectKind3, uEffectIntensity3, vTexCoord);
                 base = applyTransition(base, vTexCoord);
+                float visible = maskVisibility(vTexCoord);
+                if (uSourceGraphEnabled > 0.5 && uMaskShape > 0.5) {
+                    base.rgb = mix(uBackground, base.rgb, visible);
+                }
                 vec4 overlay = texture2D(uOverlayTexture, vTexCoord);
-                // Android Canvas bitmaps are uploaded premultiplied: RGB already contains alpha.
+                // Android Canvas overlay bitmaps are uploaded premultiplied: RGB already contains alpha.
                 vec3 rgb = overlay.rgb + base.rgb * (1.0 - overlay.a);
                 gl_FragColor = vec4(rgb, 1.0);
             }

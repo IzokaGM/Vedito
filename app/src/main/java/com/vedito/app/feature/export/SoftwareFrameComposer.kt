@@ -31,6 +31,8 @@ import com.vedito.app.core.export.ExportPlan
 import com.vedito.app.core.export.FrameAccessMode
 import com.vedito.app.core.export.FrameAccessPlanner
 import com.vedito.app.core.export.GpuPostProcessPlanner
+import com.vedito.app.core.export.GpuSourceGraphPlan
+import com.vedito.app.core.export.GpuSourceGraphPlanner
 import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.ClipFitMode
 import com.vedito.app.core.model.ClipTransform
@@ -59,8 +61,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * Patch 21 hybrid export compositor. CPU handles canonical source/color/chroma/mask/text layers,
- * while supported timed post effects/transitions are deferred to the encoder EGL/GLES surface.
+ * Patch 23 hybrid export compositor. Main-source crop/transform/chroma/color/mask can run in the encoder GLES source graph,
+ * while CPU keeps a correctness fallback plus overlay/text/caption raster planes.
  * It still consumes the same renderer-independent project/composition state as preview.
  */
 class SoftwareFrameComposer(
@@ -86,7 +88,8 @@ class SoftwareFrameComposer(
      */
     fun composeHybrid(timelinePositionMs: Int): HybridComposedFrame {
         val position = timelinePositionMs.coerceIn(0, plan.durationMs.coerceAtLeast(0))
-        baseCanvas.drawColor(project.canvasSettings.background.argb)
+        val backgroundArgb = project.canvasSettings.background.argb
+        baseCanvas.drawColor(backgroundArgb)
         overlayCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
         val frame = FrameCompositionBuilder.build(project.clips, project.effectClips, position)
@@ -95,6 +98,10 @@ class SoftwareFrameComposer(
         } else {
             com.vedito.app.core.export.GpuPostProcessPlan.NEUTRAL
         }
+        var sourcePlane: Bitmap? = null
+        var sourceGraph = GpuSourceGraphPlan.disabled(backgroundArgb)
+        var retainedSourceLease: VideoFrameSourcePool.FrameLease? = null
+        var sourceRenderedOnGpu = false
 
         if (frame != null) {
             val clip = project.clips.getOrNull(frame.clipIndex)
@@ -107,24 +114,46 @@ class SoftwareFrameComposer(
                 )
                 lease?.let { decoded ->
                     val bitmap = decoded.bitmap
-                    val processed = if (frame.chromaKey.enabled) applyChroma(bitmap, frame.chromaKey) else bitmap
-                    val framePaint = Paint(paint).apply {
-                        alpha = (frame.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
-                        if (!ColorGradeEngine.isNeutral(frame.colorGrade)) {
-                            colorFilter = ColorMatrixColorFilter(ColorMatrix(ColorGradeEngine.colorMatrix(frame.colorGrade)))
+                    if (gpuPlan.gpuEligible) {
+                        val graph = GpuSourceGraphPlanner.plan(
+                            frame = frame,
+                            sourceWidth = bitmap.width,
+                            sourceHeight = bitmap.height,
+                            outputWidth = plan.width,
+                            outputHeight = plan.height,
+                            backgroundArgb = backgroundArgb
+                        )
+                        if (graph.enabled) {
+                            sourcePlane = bitmap
+                            sourceGraph = graph
+                            retainedSourceLease = decoded
+                            sourceRenderedOnGpu = true
                         }
                     }
-                    drawVisualBitmap(baseCanvas, processed, frame.transform, framePaint, 0.42f)
-                    if (processed !== bitmap) processed.recycle()
-                    if (decoded.recycleAfterUse && !bitmap.isRecycled) bitmap.recycle()
+
+                    if (!sourceRenderedOnGpu) {
+                        val processed = if (frame.chromaKey.enabled) applyChroma(bitmap, frame.chromaKey) else bitmap
+                        val framePaint = Paint(paint).apply {
+                            alpha = (frame.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
+                            if (!ColorGradeEngine.isNeutral(frame.colorGrade)) {
+                                colorFilter = ColorMatrixColorFilter(ColorMatrix(ColorGradeEngine.colorMatrix(frame.colorGrade)))
+                            }
+                        }
+                        drawVisualBitmap(baseCanvas, processed, frame.transform, framePaint, 0.42f)
+                        if (processed !== bitmap) processed.recycle()
+                        decoded.close()
+                    }
                 }
 
                 if (!gpuPlan.gpuEligible) {
                     drawEffects(baseCanvas, frame.activeEffects, frame.transition, position)
                     gpuPlan = com.vedito.app.core.export.GpuPostProcessPlan.NEUTRAL
                 }
-                // Keep Patch 19/20 visual ordering: mask occlusion sits after effect/transition and before overlays.
-                drawMaskOcclusion(overlayCanvas, frame.mask, project.canvasSettings.background.argb)
+                // CPU path keeps the legacy mask occlusion plane. GPU source graph applies mask after
+                // post effects inside the encoder shader so ordering remains source/effects/mask/overlays.
+                if (!sourceRenderedOnGpu) {
+                    drawMaskOcclusion(overlayCanvas, frame.mask, backgroundArgb)
+                }
             }
         }
 
@@ -133,11 +162,14 @@ class SoftwareFrameComposer(
                 OverlayMediaType.IMAGE -> decodeOverlayImage(layer.asset)?.let { VideoFrameSourcePool.FrameLease(it, false) }
                 OverlayMediaType.VIDEO -> decodeOverlayVideoFrame(layer.asset, layer.sourcePositionMs)
             } ?: return@forEach
-            val layerPaint = Paint(paint).apply {
-                alpha = (layer.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
+            try {
+                val layerPaint = Paint(paint).apply {
+                    alpha = (layer.transform.opacity.coerceIn(0f, 1f) * 255f).roundToInt()
+                }
+                drawVisualBitmap(overlayCanvas, lease.bitmap, layer.transform, layerPaint, 0.5f)
+            } finally {
+                lease.close()
             }
-            drawVisualBitmap(overlayCanvas, lease.bitmap, layer.transform, layerPaint, 0.5f)
-            if (lease.recycleAfterUse && !lease.bitmap.isRecycled) lease.bitmap.recycle()
         }
 
         TextComposition.activeLayers(position, project.textClips).forEach { layer ->
@@ -146,7 +178,14 @@ class SoftwareFrameComposer(
         CaptionComposition.activeLayers(position, project.captionSegments).forEachIndexed { index, layer ->
             drawCaption(overlayCanvas, layer.segment, layer.localTimelineMs, index)
         }
-        return HybridComposedFrame(baseBitmap, overlayBitmap, gpuPlan)
+        return HybridComposedFrame(
+            basePlane = baseBitmap,
+            overlayPlane = overlayBitmap,
+            gpuPostProcess = gpuPlan,
+            sourcePlane = sourcePlane,
+            sourceGraph = sourceGraph,
+            sourceLease = retainedSourceLease
+        )
     }
 
     fun performanceSnapshot(): VideoFrameSourcePool.Snapshot = framePool.snapshot()

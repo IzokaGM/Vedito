@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.22.0 / versionCode 22**
+- Current patch: **0.23.0 / versionCode 23**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -93,7 +93,10 @@ Important modules:
 - `feature/export/SoftwareFrameComposer.kt` — hybrid base/overlay plane compositor consuming canonical project/composition state.
 - `feature/export/CodecInputSurface.kt` — EGL/GLES post-effect + overlay compositor directly on the video encoder input Surface.
 - `feature/export/PcmMediaDecoder.kt` / `OfflineAudioMixer.kt` — export audio decode, normalized PCM cache, overlap mixing and forward-speed time-stretch foundation.
-- `feature/export/VideoExportEngine.kt` / `Mp4MuxSink.kt` — H.264/AAC MediaCodec + MediaMuxer export pipeline, progress/cancel/error lifecycle.
+- `feature/export/VideoExportEngine.kt` / `Mp4MuxSink.kt` — AVC/HEVC + AAC MediaCodec/MediaMuxer export pipeline, progress/cancel/error lifecycle.
+- `core/export/GpuSourceGraphPlan.kt` — Android-free main-source crop/transform/chroma/color/mask GPU execution plan.
+- `core/export/ReverseDecodeCachePlan.kt` — Android-free reverse cache memory/timing policy.
+- `feature/export/ReverseVideoFrameDecoder.kt` — previous-sync forward decode + bounded reverse frame cache with fallback at pool layer.
 
 ## Completed progression
 - Native clean rewrite and standalone APK.
@@ -117,6 +120,7 @@ Important modules:
 - Major Patch 20: real audible export mixer. Main-video source sound plus independent audio tracks now render to stereo AAC with timeline sync, volume/mute/fades, multi-track overlap and lightweight pitch-preserving forward-speed handling. Export cancellation/mux/encoder lifecycle is hardened.
 - Patch 21: bounded MediaCodec streaming decode for forward/freeze main video and video overlays with random-access fallback, reusable frame/texture storage, hybrid base/overlay composition, and encoder-surface GLES post effects/transitions.
 - Patch 22: 720p/1080p/1440p/4K export profiles, 24/30/60fps, H.264/HEVC codec selection, deterministic bitrate/file-size planning, MediaCodec size/rate/surface preflight, exact encoder selection and high-resolution main-source decode support.
+- Patch 23: encoder-surface GPU main-source graph for transform/chroma/color/mask, retained decoder leases, and bounded MediaCodec reverse GOP-tail cache with random-access fallback.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -129,14 +133,14 @@ Important modules:
 
 ## Explicitly not completed
 - Speed curves UI/easing.
-- Production reverse decoder or reversed source audio.
+- Studio-grade reverse source audio remains pending; reverse video now has the Patch 23 bounded MediaCodec cache foundation.
 - Freeze duration UI beyond default insertion.
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Full source-texture GPU composition, production reverse decoder/cache and export recovery/resume. Patch 21 now provides streaming forward/freeze decode + hybrid GPU post processing.
+- Zero-copy OES/SurfaceTexture decoder-to-GPU path and export recovery/resume remain pending. Patch 23 now evaluates the canonical main-source graph on GLES after YUV→RGB bitmap decode and adds bounded reverse MediaCodec caching.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -186,11 +190,22 @@ Important modules:
 - 4K/60 is capability-driven, not guaranteed. Preflight estimates output size but cannot prove free space for every SAF/cloud destination. Thermal throttling and long-project memory pressure remain possible.
 - Project schema remains v18; export choices are not persisted into project JSON.
 
+## Patch 23 behavior/limits
+- `GpuSourceGraphPlanner` is the Android-free canonical execution plan for main-source crop/fit/transform, opacity, chroma, color matrix and mask geometry.
+- `CodecInputSurface` evaluates that source graph in GLES, then supported timed effects/transitions, then mask visibility, then the reusable overlay/text/caption plane.
+- `HybridComposedFrame` can retain a raw decoded source bitmap and its `FrameLease`; the export engine closes the lease immediately after the encoder draw.
+- `VideoFrameSourcePool` pins streaming entries while leased, so overlay decoder churn cannot recycle the active main-source frame before upload.
+- Reverse clips prefer `ReverseVideoFrameDecoder`: seek to previous sync → decode forward → retain a memory-bounded tail → serve descending reverse timestamps from cache. Unsupported device paths fall back to `MediaMetadataRetriever`.
+- `ReverseDecodeCachePlanner` bounds cache depth by decoded dimensions/FPS and a default memory budget; 4K therefore keeps far fewer frames than 1080p.
+- Grain still forces the CPU correctness path. Video overlays/text/captions still rasterize into the CPU overlay plane.
+- Decoder YUV→RGB conversion still occurs on CPU before source texture upload; a future OES/SurfaceTexture path may remove that final conversion without changing canonical render state.
+- Project schema remains v18; Patch 23 introduces no new saved project state.
+
 ## Next milestone
-**Patch 23 — Full GPU Source Graph / Reverse Decode Cache Foundation**
-- move chroma/color/transform/mask source processing toward one GPU graph,
-- add bounded reverse-frame cache/decoder strategy instead of per-frame random access,
-- continue preview/export parity while reducing CPU bitmap pressure,
-- keep Patch 20 audio and Patch 22 encoder-preflight contracts intact.
+**Patch 24 — Export Recovery / Long-Project Hardening Foundation**
+- resumable/recoverable export job metadata without corrupting project state,
+- low-storage/destination failure hardening,
+- longer-project memory/thermal checkpoints and safer resource reacquisition,
+- keep Patch 23 source/reverse execution and Patch 20 audio contracts intact.
 
 See `WORKPLAN.md` for the full roadmap.
