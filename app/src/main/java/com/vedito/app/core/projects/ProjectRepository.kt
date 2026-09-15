@@ -6,6 +6,8 @@ import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
+import com.vedito.app.core.model.CaptionPreset
+import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
@@ -21,6 +23,7 @@ import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.visual.VisualTransformMath
+import com.vedito.app.core.caption.CaptionTimelineEditor
 import com.vedito.app.core.text.TextTimelineEditor
 import org.json.JSONArray
 import org.json.JSONObject
@@ -65,6 +68,7 @@ class ProjectRepository(context: Context) {
         val overlayAssets = parseOverlayAssets(item)
         val overlayClips = parseOverlayClips(item, overlayAssets)
         val textClips = parseTextClips(item)
+        val captionSegments = parseCaptionSegments(item)
 
         return Project(
             id = id,
@@ -77,12 +81,14 @@ class ProjectRepository(context: Context) {
             overlayAssets = overlayAssets,
             overlayClips = overlayClips,
             textClips = textClips,
+            captionSegments = captionSegments,
             canvasSettings = parseCanvasSettings(item),
             playheadMs = item.optInt("playheadMs", 0),
             selectedClipId = item.optString("selectedClipId").takeIf { it.isNotBlank() },
             selectedAudioClipId = item.optString("selectedAudioClipId").takeIf { it.isNotBlank() },
             selectedOverlayClipId = item.optString("selectedOverlayClipId").takeIf { it.isNotBlank() },
             selectedTextClipId = item.optString("selectedTextClipId").takeIf { it.isNotBlank() },
+            selectedCaptionSegmentId = item.optString("selectedCaptionSegmentId").takeIf { it.isNotBlank() },
             timelineZoom = item.optDouble("timelineZoom", 1.0).toFloat().coerceIn(1f, 8f),
             timelineViewportStartMs = item.optInt("timelineViewportStartMs", 0).coerceAtLeast(0)
         )
@@ -333,6 +339,28 @@ class ProjectRepository(context: Context) {
         }
     }
 
+    private fun parseCaptionSegments(item: JSONObject): List<CaptionSegment> {
+        val array = item.optJSONArray("captionSegments") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val segment = array.optJSONObject(index) ?: continue
+                val id = segment.optString("id")
+                val text = segment.optString("text").trim().take(CaptionTimelineEditor.MAX_TEXT_LENGTH)
+                val duration = segment.optInt("durationMs", 0).coerceAtLeast(0)
+                if (id.isBlank() || text.isBlank() || duration <= 0) continue
+                add(
+                    CaptionSegment(
+                        id = id,
+                        text = text,
+                        timelineStartMs = segment.optInt("timelineStartMs", 0).coerceAtLeast(0),
+                        durationMs = duration,
+                        preset = enumValueOrDefault(segment.optString("preset"), CaptionPreset.BOXED)
+                    )
+                )
+            }
+        }
+    }
+
     private fun toJson(project: Project): JSONObject {
         val assetArray = JSONArray()
         project.assets.forEach { asset ->
@@ -446,6 +474,18 @@ class ProjectRepository(context: Context) {
             )
         }
 
+        val captionSegmentArray = JSONArray()
+        project.captionSegments.forEach { segment ->
+            captionSegmentArray.put(
+                JSONObject()
+                    .put("id", segment.id)
+                    .put("text", segment.text)
+                    .put("timelineStartMs", segment.timelineStartMs)
+                    .put("durationMs", segment.durationMs)
+                    .put("preset", segment.preset.name)
+            )
+        }
+
         return JSONObject()
             .put("schemaVersion", SCHEMA_VERSION)
             .put("id", project.id)
@@ -458,6 +498,7 @@ class ProjectRepository(context: Context) {
             .put("overlayAssets", overlayAssetArray)
             .put("overlayClips", overlayClipArray)
             .put("textClips", textClipArray)
+            .put("captionSegments", captionSegmentArray)
             .put(
                 "canvas",
                 JSONObject()
@@ -469,6 +510,7 @@ class ProjectRepository(context: Context) {
             .put("selectedAudioClipId", project.selectedAudioClipId ?: "")
             .put("selectedOverlayClipId", project.selectedOverlayClipId ?: "")
             .put("selectedTextClipId", project.selectedTextClipId ?: "")
+            .put("selectedCaptionSegmentId", project.selectedCaptionSegmentId ?: "")
             .put("timelineZoom", project.timelineZoom.toDouble())
             .put("timelineViewportStartMs", project.timelineViewportStartMs)
     }
@@ -508,6 +550,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 11
+        private const val SCHEMA_VERSION = 12
     }
 }

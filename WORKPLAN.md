@@ -65,9 +65,9 @@ Pending:
 - Retime/reverse audio model for retimed source extraction.
 
 ## Stage 5 — Text & captions
-**In progress; Patch 11 foundation completed.**
-Completed: timed manual text layers, content editing, basic style/transform, z-order, preview composition, persistence + undo/redo.
-Pending: subtitle/caption segment workflow, SRT import/export, text presets/fonts, animation, auto captions, correction, karaoke/per-word timing, TTS.
+**In progress; Patch 12 caption foundation completed.**
+Completed: timed manual text layers, dedicated caption segments, SRT import/export, segment move/trim/split, batch caption shift, caption-safe presets, preview composition, persistence + undo/redo.
+Pending: richer text/font presets, animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
 **Pending.**
@@ -116,12 +116,17 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Shared transform controls.
   - `OverlayComposition` renderer-independent state for preview/export reuse.
   - Native synchronized PIP preview; overlay video audio intentionally muted.
-- **Patch 11:** Text & Caption Track Foundation — current patch.
+- **Patch 11:** Text & Caption Track Foundation — locked after CI/device verification.
   - Timed manual text layers with move/trim/z-order.
   - Text style + transform controls and native preview.
   - Renderer-independent `TextComposition` for future export reuse.
   - Schema v11 persistence + undo/redo.
-- **Patch 12:** Caption/Subtitles Foundation — SRT import/export, caption segments, batch-safe subtitle editing.
+- **Patch 12:** Caption/Subtitles Foundation — current patch.
+  - Dedicated caption segment track and renderer-independent caption composition.
+  - Manual add/edit/move/trim/split/delete.
+  - SRT import/export and batch ±0.25s timing shift.
+  - Caption-safe BOXED/CLEAN/LARGE presets.
+  - Schema v12 persistence + undo/redo.
 - **Patch 13+:** Text/caption expansion, effects/transitions, pro visual tools, then production export and AI stages.
 
 ## Release gates

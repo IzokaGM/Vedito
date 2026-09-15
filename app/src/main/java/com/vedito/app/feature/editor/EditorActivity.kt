@@ -25,6 +25,8 @@ import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
+import com.vedito.app.core.model.CaptionPreset
+import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.ClipPlaybackMode
 import com.vedito.app.core.model.ClipTiming
@@ -40,6 +42,8 @@ import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.model.TextStyle
 import com.vedito.app.core.model.TextTransform
 import com.vedito.app.core.projects.ProjectRepository
+import com.vedito.app.core.caption.CaptionTimelineEditor
+import com.vedito.app.core.caption.SrtCodec
 import com.vedito.app.core.overlay.OverlayTimelineEditor
 import com.vedito.app.core.timeline.ClipTimeMap
 import com.vedito.app.core.timeline.EditorHistory
@@ -51,6 +55,7 @@ import com.vedito.app.core.text.TextTimelineEditor
 import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
+import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.overlay.OverlayPreviewController
 import com.vedito.app.feature.editor.timeline.ThumbnailExtractor
 import com.vedito.app.feature.editor.text.TextPreviewController
@@ -73,6 +78,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var audioWaveformCache: AudioWaveformCache
     private lateinit var overlayPreview: OverlayPreviewController
     private lateinit var textPreview: TextPreviewController
+    private lateinit var captionPreview: CaptionPreviewController
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -84,12 +90,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var overlayAssets: List<OverlayAsset> = emptyList()
     private var overlayClips: List<OverlayClip> = emptyList()
     private var textClips: List<TextClip> = emptyList()
+    private var captionSegments: List<CaptionSegment> = emptyList()
     private var canvasSettings = CanvasSettings()
     private var waveformsByAssetId: Map<String, FloatArray> = emptyMap()
     private var selectedClipId: String? = null
     private var selectedAudioClipId: String? = null
     private var selectedOverlayClipId: String? = null
     private var selectedTextClipId: String? = null
+    private var selectedCaptionSegmentId: String? = null
     private var timelinePositionMs: Int = 0
     private var playbackClipId: String? = null
     private var userScrubbing = false
@@ -103,6 +111,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var pendingAudioEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingOverlayEditSnapshot: EditorHistory.Snapshot? = null
     private var pendingTextEditSnapshot: EditorHistory.Snapshot? = null
+    private var pendingCaptionEditSnapshot: EditorHistory.Snapshot? = null
     private var addingOverlay = false
 
     private val addVideoPicker = registerForActivityResult(
@@ -129,6 +138,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_OVERLAYS)
     ) { uris ->
         if (uris.isNotEmpty()) addOverlays(uris.take(MAX_ADDED_OVERLAYS))
+    }
+
+    private val importSrtPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) importSrt(uri)
+    }
+
+    private val exportSrtPicker = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/x-subrip")
+    ) { uri ->
+        if (uri != null) exportSrt(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,12 +181,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayAssets = project.overlayAssets
         overlayClips = sanitizeOverlayClips(project.overlayClips)
         textClips = sanitizeTextClips(project.textClips)
+        captionSegments = sanitizeCaptionSegments(project.captionSegments)
         canvasSettings = project.canvasSettings
         selectedClipId = project.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = project.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         selectedOverlayClipId = project.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         selectedTextClipId = project.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
+        selectedCaptionSegmentId = project.selectedCaptionSegmentId?.takeIf { id -> captionSegments.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = project.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         timelineZoom = project.timelineZoom.coerceIn(1f, 8f)
@@ -207,6 +230,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.textBackButton.setOnClickListener { changeTextLayer(-1) }
         binding.textFrontButton.setOnClickListener { changeTextLayer(1) }
         binding.textDeleteButton.setOnClickListener { deleteSelectedText() }
+        binding.addCaptionButton.setOnClickListener { showCaptionDialog(null) }
+        binding.editCaptionButton.setOnClickListener { selectedCaptionSegmentId?.let { id -> captionSegments.firstOrNull { it.id == id } }?.let(::showCaptionDialog) }
+        binding.splitCaptionButton.setOnClickListener { splitSelectedCaptionAtPlayhead() }
+        binding.captionStyleButton.setOnClickListener { cycleSelectedCaptionStyle() }
+        binding.deleteCaptionButton.setOnClickListener { deleteSelectedCaption() }
+        binding.importSrtButton.setOnClickListener { importSrtPicker.launch(arrayOf("application/x-subrip", "text/plain", "application/octet-stream")) }
+        binding.exportSrtButton.setOnClickListener { exportSrtPicker.launch("${project.title.ifBlank { "vedito" }}-captions.srt") }
+        binding.captionShiftBackButton.setOnClickListener { shiftAllCaptions(-CAPTION_SHIFT_STEP_MS) }
+        binding.captionShiftForwardButton.setOnClickListener { shiftAllCaptions(CAPTION_SHIFT_STEP_MS) }
         binding.textToolbar.onAction = ::handleTextAction
         binding.visualToolbar.onAction = ::handleVisualAction
         binding.timingToolbar.onAction = ::handleTimingAction
@@ -236,12 +268,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.overlayTimeline.onOverlaySelected = { id ->
             selectedOverlayClipId = id
             selectedTextClipId = null
+            selectedCaptionSegmentId = null
             updateOverlayUi()
             updateTextUi()
+            updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
             renderOverlayState()
             renderTextState()
+            renderCaptionState()
             saveProject()
         }
         binding.overlayTimeline.onOverlayEditStart = { id ->
@@ -260,17 +295,21 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.textTimeline.onTextSelected = { id ->
             selectedTextClipId = id
             selectedOverlayClipId = null
+            selectedCaptionSegmentId = null
             updateTextUi()
             updateOverlayUi()
+            updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
             renderTextState()
             renderOverlayState()
+            renderCaptionState()
             saveProject()
         }
         binding.textTimeline.onTextEditStart = { id ->
             selectedTextClipId = id
             selectedOverlayClipId = null
+            selectedCaptionSegmentId = null
             pendingTextEditSnapshot = snapshot()
             previewPlayer.pause()
             audioPlayback.pause()
@@ -282,17 +321,47 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (finished) finishTextGestureEdit() else renderTextState()
         }
 
+        binding.captionTimeline.onCaptionSelected = { id ->
+            selectedCaptionSegmentId = id
+            selectedTextClipId = null
+            selectedOverlayClipId = null
+            updateCaptionUi()
+            updateTextUi()
+            updateOverlayUi()
+            renderCaptionState()
+            renderTextState()
+            renderOverlayState()
+            saveProject()
+        }
+        binding.captionTimeline.onCaptionEditStart = { id ->
+            selectedCaptionSegmentId = id
+            selectedTextClipId = null
+            selectedOverlayClipId = null
+            pendingCaptionEditSnapshot = snapshot()
+            previewPlayer.pause()
+            audioPlayback.pause()
+            playbackClipId = null
+        }
+        binding.captionTimeline.onCaptionChanged = { edited, finished ->
+            captionSegments = captionSegments.map { if (it.id == edited.id) edited else it }.sortedBy { it.timelineStartMs }
+            selectedCaptionSegmentId = edited.id
+            if (finished) finishCaptionGestureEdit() else renderCaptionState()
+        }
+
         binding.timeline.onClipSelected = { id ->
             selectedClipId = id
             selectedOverlayClipId = null
             selectedTextClipId = null
+            selectedCaptionSegmentId = null
             updateSelectionUi()
             updateOverlayUi()
             updateTextUi()
+            updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
             renderOverlayState()
             renderTextState()
+            renderCaptionState()
             saveProject()
         }
         binding.timeline.onScrubbed = { position ->
@@ -327,6 +396,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             renderAudioState()
             renderOverlayState()
             renderTextState()
+            renderCaptionState()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -338,28 +408,50 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayPreview.onOverlaySelected = { id ->
             selectedOverlayClipId = id
             selectedTextClipId = null
+            selectedCaptionSegmentId = null
             updateOverlayUi()
             updateTextUi()
+            updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
             renderOverlayState()
             renderTextState()
+            renderCaptionState()
             saveProject()
         }
         textPreview = TextPreviewController(this, binding.textPreviewLayer)
         textPreview.onTextSelected = { id ->
             selectedTextClipId = id
             selectedOverlayClipId = null
+            selectedCaptionSegmentId = null
             updateTextUi()
             updateOverlayUi()
+            updateCaptionUi()
             updateVisualToolbar()
             updateTimingToolbar()
             renderTextState()
             renderOverlayState()
+            renderCaptionState()
             saveProject()
         }
         binding.textPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
+        }
+        captionPreview = CaptionPreviewController(this, binding.captionPreviewLayer)
+        captionPreview.onCaptionSelected = { id ->
+            selectedCaptionSegmentId = id
+            selectedTextClipId = null
+            selectedOverlayClipId = null
+            updateCaptionUi()
+            updateTextUi()
+            updateOverlayUi()
+            renderCaptionState()
+            renderTextState()
+            renderOverlayState()
+            saveProject()
+        }
+        binding.captionPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (::captionPreview.isInitialized) captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
         }
         applyCanvasPreviewLayout()
         audioPlayback.setTimeline(audioAssets, audioClips)
@@ -385,6 +477,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (::audioWaveformCache.isInitialized) audioWaveformCache.release()
         if (::overlayPreview.isInitialized) overlayPreview.release()
         if (::textPreview.isInitialized) textPreview.release()
+        if (::captionPreview.isInitialized) captionPreview.release()
         if (::previewPlayer.isInitialized) previewPlayer.release()
         super.onDestroy()
     }
@@ -685,6 +778,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         history.record(before)
         renderTextState()
         updateTextUi()
+        captionSegments = sanitizeCaptionSegments(captionSegments)
+        if (selectedCaptionSegmentId != null && captionSegments.none { it.id == selectedCaptionSegmentId }) selectedCaptionSegmentId = null
+        renderCaptionState()
+        updateCaptionUi()
         updateVisualToolbar()
         updateTimingToolbar()
         saveProject()
@@ -1087,6 +1184,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingAudioEditSnapshot = null
         pendingOverlayEditSnapshot = null
         pendingTextEditSnapshot = null
+        pendingCaptionEditSnapshot = null
         val target = history.undo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -1099,6 +1197,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         pendingAudioEditSnapshot = null
         pendingOverlayEditSnapshot = null
         pendingTextEditSnapshot = null
+        pendingCaptionEditSnapshot = null
         val target = history.redo(snapshot()) ?: return
         applySnapshot(target)
     }
@@ -1111,12 +1210,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayAssets = snapshot.overlayAssets
         overlayClips = sanitizeOverlayClips(snapshot.overlayClips)
         textClips = sanitizeTextClips(snapshot.textClips)
+        captionSegments = sanitizeCaptionSegments(snapshot.captionSegments)
         canvasSettings = snapshot.canvasSettings
         selectedClipId = snapshot.selectedClipId?.takeIf { id -> clips.any { it.id == id } }
             ?: clips.firstOrNull()?.id
         selectedAudioClipId = snapshot.selectedAudioClipId?.takeIf { id -> audioClips.any { it.id == id } }
         selectedOverlayClipId = snapshot.selectedOverlayClipId?.takeIf { id -> overlayClips.any { it.id == id } }
         selectedTextClipId = snapshot.selectedTextClipId?.takeIf { id -> textClips.any { it.id == id } }
+        selectedCaptionSegmentId = snapshot.selectedCaptionSegmentId?.takeIf { id -> captionSegments.any { it.id == id } }
         refreshTimelineIndex()
         timelinePositionMs = snapshot.playheadMs.coerceIn(0, timelineIndex.totalDurationMs)
         renderTimelineState()
@@ -1146,11 +1247,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         overlayAssets = overlayAssets.toList(),
         overlayClips = overlayClips.toList(),
         textClips = textClips.toList(),
+        captionSegments = captionSegments.toList(),
         canvasSettings = canvasSettings,
         selectedClipId = selectedClipId,
         selectedAudioClipId = selectedAudioClipId,
         selectedOverlayClipId = selectedOverlayClipId,
         selectedTextClipId = selectedTextClipId,
+        selectedCaptionSegmentId = selectedCaptionSegmentId,
         playheadMs = timelinePositionMs
     )
 
@@ -1188,6 +1291,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (selectedTextClipId != null && textClips.none { it.id == selectedTextClipId }) selectedTextClipId = null
         renderTextState()
         updateTextUi()
+        captionSegments = sanitizeCaptionSegments(captionSegments)
+        if (selectedCaptionSegmentId != null && captionSegments.none { it.id == selectedCaptionSegmentId }) selectedCaptionSegmentId = null
+        renderCaptionState()
+        updateCaptionUi()
         updateVisualToolbar()
         updateTimingToolbar()
     }
@@ -1202,7 +1309,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         binding.overlayTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         binding.textTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
+        binding.captionTimeline.updatePlayhead(timelinePositionMs, timelineZoom, timelineViewportStartMs)
         if (::textPreview.isInitialized) textPreview.render(timelinePositionMs, selectedTextClipId)
+        if (::captionPreview.isInitialized) captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
         if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
     }
 
@@ -1949,10 +2058,263 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         history.record(before)
         renderTextState()
         updateTextUi()
+        captionSegments = sanitizeCaptionSegments(captionSegments)
+        if (selectedCaptionSegmentId != null && captionSegments.none { it.id == selectedCaptionSegmentId }) selectedCaptionSegmentId = null
+        renderCaptionState()
+        updateCaptionUi()
         updateVisualToolbar()
         updateTimingToolbar()
         saveProject()
         updateHistoryUi()
+    }
+
+    private fun showCaptionDialog(existing: CaptionSegment?) {
+        if (timelineIndex.totalDurationMs < CaptionTimelineEditor.MIN_DURATION_MS) {
+            binding.captionSelectionLabel.text = "Add a video clip before adding captions"
+            return
+        }
+        val input = EditText(this).apply {
+            setText(existing?.text.orEmpty())
+            hint = "Caption text"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            minLines = 2
+            maxLines = 5
+            setPadding(
+                (20 * resources.displayMetrics.density).roundToInt(),
+                (12 * resources.displayMetrics.density).roundToInt(),
+                (20 * resources.displayMetrics.density).roundToInt(),
+                (12 * resources.displayMetrics.density).roundToInt()
+            )
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (existing == null) "Add caption" else "Edit caption")
+            .setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(if (existing == null) "Add" else "Save") { _, _ ->
+                upsertCaptionSegment(existing, input.text?.toString().orEmpty())
+            }
+            .show()
+    }
+
+    private fun upsertCaptionSegment(existing: CaptionSegment?, rawText: String) {
+        val value = rawText.trim().take(CaptionTimelineEditor.MAX_TEXT_LENGTH)
+        if (value.isBlank()) return
+        val total = timelineIndex.totalDurationMs
+        if (total < CaptionTimelineEditor.MIN_DURATION_MS) return
+        val before = snapshot()
+        if (existing == null) {
+            val latestStart = (total - CaptionTimelineEditor.MIN_DURATION_MS).coerceAtLeast(0)
+            val start = timelinePositionMs.coerceIn(0, latestStart)
+            val duration = minOf(DEFAULT_CAPTION_DURATION_MS, total - start)
+                .coerceAtLeast(CaptionTimelineEditor.MIN_DURATION_MS)
+            val segment = CaptionSegment(
+                id = UUID.randomUUID().toString(),
+                text = value,
+                timelineStartMs = start,
+                durationMs = duration,
+                preset = CaptionPreset.BOXED
+            )
+            captionSegments = sanitizeCaptionSegments(captionSegments + segment)
+            selectedCaptionSegmentId = segment.id
+        } else {
+            val index = captionSegments.indexOfFirst { it.id == existing.id }
+            if (index < 0) return
+            val updated = captionSegments[index].copy(text = value)
+            if (updated == captionSegments[index]) return
+            captionSegments = captionSegments.toMutableList().apply { this[index] = updated }
+            selectedCaptionSegmentId = updated.id
+        }
+        selectedTextClipId = null
+        selectedOverlayClipId = null
+        if (before != snapshot()) history.record(before)
+        renderCaptionState()
+        renderTextState()
+        renderOverlayState()
+        updateCaptionUi()
+        updateTextUi()
+        updateOverlayUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun sanitizeCaptionSegments(input: List<CaptionSegment>): List<CaptionSegment> {
+        return CaptionTimelineEditor.normalizeAll(input, clips.sumOf { it.durationMs }.coerceAtLeast(0))
+    }
+
+    private fun renderCaptionState() {
+        binding.captionTimeline.setState(
+            segments = captionSegments,
+            selectedSegmentId = selectedCaptionSegmentId,
+            durationMs = timelineIndex.totalDurationMs,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs,
+            positionMs = timelinePositionMs
+        )
+        if (::captionPreview.isInitialized) {
+            captionPreview.setTimeline(captionSegments)
+            captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
+        }
+    }
+
+    private fun updateCaptionUi() {
+        val selected = captionSegments.firstOrNull { it.id == selectedCaptionSegmentId }
+        val hasCaptions = captionSegments.isNotEmpty()
+        val selectedEnabled = selected != null
+        listOf(
+            binding.editCaptionButton,
+            binding.splitCaptionButton,
+            binding.captionStyleButton,
+            binding.deleteCaptionButton
+        ).forEach { view ->
+            view.isEnabled = selectedEnabled
+            view.alpha = if (selectedEnabled) 1f else 0.38f
+        }
+        binding.exportSrtButton.isEnabled = hasCaptions
+        binding.exportSrtButton.alpha = if (hasCaptions) 1f else 0.38f
+        binding.captionShiftBackButton.isEnabled = hasCaptions
+        binding.captionShiftBackButton.alpha = if (hasCaptions) 1f else 0.38f
+        binding.captionShiftForwardButton.isEnabled = hasCaptions
+        binding.captionShiftForwardButton.alpha = if (hasCaptions) 1f else 0.38f
+        if (selected == null) {
+            binding.captionSelectionLabel.text = if (hasCaptions) {
+                "${captionSegments.size} captions · tap a segment to edit"
+            } else {
+                "No captions · add or import SRT"
+            }
+            return
+        }
+        val preview = selected.text.replace('\n', ' ').take(30)
+        binding.captionSelectionLabel.text = "Caption · $preview · ${formatDuration(selected.durationMs)} · ${selected.preset.name.lowercase()}"
+    }
+
+    private fun finishCaptionGestureEdit() {
+        val before = pendingCaptionEditSnapshot
+        pendingCaptionEditSnapshot = null
+        captionSegments = sanitizeCaptionSegments(captionSegments)
+        if (before != null && before != snapshot()) history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun splitSelectedCaptionAtPlayhead() {
+        val id = selectedCaptionSegmentId ?: return
+        val index = captionSegments.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = captionSegments[index]
+        val split = CaptionTimelineEditor.split(current, timelinePositionMs) ?: run {
+            binding.captionSelectionLabel.text = "Move playhead inside caption before splitting"
+            return
+        }
+        val before = snapshot()
+        val right = split.second.copy(id = UUID.randomUUID().toString())
+        captionSegments = captionSegments.toMutableList().apply {
+            this[index] = split.first
+            add(index + 1, right)
+        }
+        captionSegments = sanitizeCaptionSegments(captionSegments)
+        selectedCaptionSegmentId = right.id
+        history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun cycleSelectedCaptionStyle() {
+        val id = selectedCaptionSegmentId ?: return
+        val index = captionSegments.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = captionSegments[index]
+        val values = CaptionPreset.values()
+        val next = values[(values.indexOf(current.preset).coerceAtLeast(0) + 1) % values.size]
+        val before = snapshot()
+        captionSegments = captionSegments.toMutableList().apply { this[index] = current.copy(preset = next) }
+        history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun deleteSelectedCaption() {
+        val id = selectedCaptionSegmentId ?: return
+        if (captionSegments.none { it.id == id }) return
+        val before = snapshot()
+        val deletedIndex = captionSegments.indexOfFirst { it.id == id }
+        captionSegments = captionSegments.filterNot { it.id == id }
+        selectedCaptionSegmentId = captionSegments.getOrNull(deletedIndex.coerceAtMost(captionSegments.lastIndex))?.id
+            ?: captionSegments.lastOrNull()?.id
+        history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun shiftAllCaptions(deltaMs: Int) {
+        if (captionSegments.isEmpty()) return
+        val before = snapshot()
+        val shifted = CaptionTimelineEditor.shiftAll(captionSegments, deltaMs, timelineIndex.totalDurationMs)
+        if (shifted == captionSegments) return
+        captionSegments = shifted
+        history.record(before)
+        renderCaptionState()
+        updateCaptionUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun importSrt(uri: Uri) {
+        if (timelineIndex.totalDurationMs < CaptionTimelineEditor.MIN_DURATION_MS) {
+            binding.captionSelectionLabel.text = "Add a video clip before importing subtitles"
+            return
+        }
+        val raw = runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        }.getOrNull()
+        if (raw.isNullOrBlank()) {
+            binding.captionSelectionLabel.text = "Could not read SRT file"
+            return
+        }
+        val parsed = sanitizeCaptionSegments(SrtCodec.parse(raw))
+        if (parsed.isEmpty()) {
+            binding.captionSelectionLabel.text = "No valid subtitle cues found"
+            return
+        }
+        val before = snapshot()
+        captionSegments = parsed
+        selectedCaptionSegmentId = parsed.firstOrNull()?.id
+        selectedTextClipId = null
+        selectedOverlayClipId = null
+        if (before != snapshot()) history.record(before)
+        renderCaptionState()
+        renderTextState()
+        renderOverlayState()
+        updateCaptionUi()
+        updateTextUi()
+        updateOverlayUi()
+        saveProject()
+        updateHistoryUi()
+        binding.captionSelectionLabel.text = "Imported ${captionSegments.size} captions · tap a segment to edit"
+    }
+
+    private fun exportSrt(uri: Uri) {
+        if (captionSegments.isEmpty()) return
+        val output = SrtCodec.serialize(captionSegments)
+        val success = runCatching {
+            contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                writer.write(output)
+                writer.flush()
+            } ?: error("No output stream")
+        }.isSuccess
+        binding.captionSelectionLabel.text = if (success) {
+            "Exported ${captionSegments.size} captions to SRT"
+        } else {
+            "Could not export SRT"
+        }
     }
 
     private fun pruneUnusedAssets() {
@@ -1973,12 +2335,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             overlayAssets = overlayAssets,
             overlayClips = overlayClips,
             textClips = textClips,
+            captionSegments = captionSegments,
             canvasSettings = canvasSettings,
             playheadMs = timelinePositionMs,
             selectedClipId = selectedClipId,
             selectedAudioClipId = selectedAudioClipId,
             selectedOverlayClipId = selectedOverlayClipId,
             selectedTextClipId = selectedTextClipId,
+            selectedCaptionSegmentId = selectedCaptionSegmentId,
             timelineZoom = timelineZoom,
             timelineViewportStartMs = timelineViewportStartMs
         )
@@ -2028,6 +2392,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         private const val MAX_ADDED_OVERLAYS = 8
         private const val DEFAULT_IMAGE_OVERLAY_MS = 3_000
         private const val DEFAULT_TEXT_DURATION_MS = 3_000
+        private const val DEFAULT_CAPTION_DURATION_MS = 2_000
+        private const val CAPTION_SHIFT_STEP_MS = 250
         private const val TEXT_POSITION_STEP = 0.08f
         private const val SCRUB_SEEK_INTERVAL_MS = 45L
         private const val MIN_SPLIT_EDGE_MS = 300

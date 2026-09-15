@@ -1,35 +1,34 @@
-# Vedito Patch 11 — Text & Caption Track Foundation
+# Vedito Patch 12 — Caption / Subtitles Foundation
 
-Version: **0.11.0** · schema **v11** · package **`com.vedito.app`**
+Version: **0.12.0** · schema **v12** · package **`com.vedito.app`**
 
 ## Added
-- Independent timed text clips above the base video and visual-overlay composition.
-- Add/edit multiline text with the native Android dialog.
-- Text timeline selection, drag-to-move and left/right edge trim.
-- Persistent text layer order with Layer − / Layer +.
-- Real preview composition using text, style and transform state.
-- Text transform controls: scale, position, rotation and opacity.
-- Text style controls: font size, color presets, background presets, bold and alignment.
-- Renderer-independent `TextComposition` / `TextLayer` state for future export reuse.
-- `TextTimelineEditor` normalization/timing/layer rules kept outside Android UI code.
-- Text edits participate in undo/redo, autosave and project reopen.
-- Existing schema v10 projects load with an empty text track; schema is now v11.
-- Home recent-project metadata can show text-layer count.
+- Dedicated subtitle/caption segment model separate from free-form text layers.
+- Native caption preview layer with three safe presets: **BOXED / CLEAN / LARGE**.
+- Caption timeline with segment selection, drag-to-move and left/right trim.
+- Add/edit/delete caption segments manually.
+- Split selected caption at the playhead.
+- Batch shift all captions by **−0.25s / +0.25s** with project-bound clamping.
+- **SRT import** into the caption track.
+- **SRT export** from the current caption track.
+- Renderer-independent `CaptionComposition`, `CaptionTimelineEditor` and `SrtCodec` for future deterministic export reuse.
+- Caption edits participate in undo/redo, autosave and project reopen.
+- Existing schema v11 projects load with an empty caption track; schema is now v12.
 
-## Intentional limits
-- This patch is the manual text/caption foundation. SRT import/export, subtitle segmentation, auto captions, karaoke/per-word timing and text animation are later milestones.
-- Text preview uses native Android `TextView` nodes, but future deterministic export must consume the renderer-independent text model rather than screenshotting preview Views.
-- Text layers currently render above visual PIP layers. Unified cross-type z-order is deferred to the production compositor/layer stack milestone.
-- Font-family packs, downloadable fonts and rich per-span styling are not included yet.
+## Important behavior
+- Importing an SRT replaces the current caption track in one undoable operation.
+- Imported cues outside project duration are safely clamped/dropped by caption normalization.
+- Captions use absolute project time and remain independent of manual text layers.
+- Auto-caption speech recognition, word-level timing/karaoke, TTS and caption animation are intentionally not included yet.
 
 ## Acceptance path
-1. Open an existing project and add a text layer.
-2. Edit the text content and confirm multiline text renders in preview.
-3. Drag the text clip in the text timeline and trim both edges.
-4. Change size/color/background/bold/alignment and transform position/scale/rotation/opacity.
-5. Add a second overlapping text layer and change Layer − / Layer + order.
-6. Scrub/play across the text intervals and verify timed visibility.
-7. Undo/redo text content, timing, style and transform edits.
-8. Close and reopen the project; text state must persist.
+1. Open a project and add a caption at the playhead.
+2. Drag/trim it, edit its text and cycle caption style.
+3. Split a caption with the playhead inside the segment.
+4. Import a valid `.srt` file and verify cues appear at correct times.
+5. Shift the full caption track ±0.25s and verify no cue exits project bounds.
+6. Export SRT and re-import it; timing/text should round-trip correctly.
+7. Undo/redo add/edit/import/shift/split/delete operations.
+8. Close and reopen; caption state must persist.
 
-GitHub Actions remains the full Android build verifier. This ZIP intentionally contains **no `.yml` / `.yaml` files**.
+Static validation in this patch includes pure Kotlin caption/SRT round-trip tests, core compile checks and XML validation. GitHub Actions remains the full Android build verifier. This ZIP intentionally contains **no `.yml` / `.yaml` files**.

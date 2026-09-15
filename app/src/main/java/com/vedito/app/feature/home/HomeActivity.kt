@@ -77,11 +77,13 @@ class HomeActivity : ComponentActivity() {
             val clipCount = project.clips.size.coerceAtLeast(project.assets.size)
             val audioCount = project.audioClips.size
             val textCount = project.textClips.size
+            val captionCount = project.captionSegments.size
             row.findViewById<TextView>(R.id.projectName).text = project.title
             val audioMeta = if (audioCount > 0) " · $audioCount audio" else ""
             val textMeta = if (textCount > 0) " · $textCount text" else ""
+            val captionMeta = if (captionCount > 0) " · $captionCount cap" else ""
             row.findViewById<TextView>(R.id.projectMeta).text =
-                "$clipCount clip${if (clipCount == 1) "" else "s"}$audioMeta$textMeta · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
+                "$clipCount clip${if (clipCount == 1) "" else "s"}$audioMeta$textMeta$captionMeta · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(project.updatedAt))}"
             row.setOnClickListener { openEditor(project.id) }
             binding.recentList.addView(row)
         }

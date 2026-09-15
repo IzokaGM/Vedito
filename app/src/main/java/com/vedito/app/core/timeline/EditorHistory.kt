@@ -3,6 +3,7 @@ package com.vedito.app.core.timeline
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
 import com.vedito.app.core.model.CanvasSettings
+import com.vedito.app.core.model.CaptionSegment
 import com.vedito.app.core.model.Clip
 import com.vedito.app.core.model.MediaAsset
 import com.vedito.app.core.model.OverlayAsset
@@ -24,11 +25,13 @@ class EditorHistory(private val capacity: Int = 40) {
         val overlayAssets: List<OverlayAsset>,
         val overlayClips: List<OverlayClip>,
         val textClips: List<TextClip>,
+        val captionSegments: List<CaptionSegment>,
         val canvasSettings: CanvasSettings,
         val selectedClipId: String?,
         val selectedAudioClipId: String?,
         val selectedOverlayClipId: String?,
         val selectedTextClipId: String?,
+        val selectedCaptionSegmentId: String?,
         val playheadMs: Int
     )
 

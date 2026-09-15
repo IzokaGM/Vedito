@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.11.0 / versionCode 11**
+- Current patch: **0.12.0 / versionCode 12**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -50,12 +50,14 @@ Current external CI concept:
 - `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
 - `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
 - `OverlayComposition`: renderer-independent active-layer resolver shared concept for preview now and deterministic export later.
-- `TextClip`: timed manual text/caption layer with `TextStyle`, `TextTransform` and z-order.
+- `TextClip`: timed free-form text layer with `TextStyle`, `TextTransform` and z-order.
 - `TextComposition`: renderer-independent active text-layer resolver for preview/export reuse.
-- `Project`: video/audio assets and clips, canvas, playhead, selection, zoom/viewport.
+- `CaptionSegment`: dedicated subtitle cue with project timing and caption-safe style preset.
+- `CaptionComposition` / `CaptionTimelineEditor` / `SrtCodec`: renderer-independent caption resolution, timing edits and SRT interchange.
+- `Project`: video/audio/overlay/text/caption state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v11.
+- `core/projects/ProjectRepository.kt` — persistence, schema v12.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -68,6 +70,7 @@ Important modules:
 - `feature/editor/overlay/OverlayTimelineView.kt`, `OverlayPreviewController.kt` — overlay editing/preview implementation.
 - `core/text/TextComposition.kt`, `TextTimelineEditor.kt` — text timing/layer/state rules.
 - `feature/editor/text/TextTimelineView.kt`, `TextToolbarView.kt`, `TextPreviewController.kt` — native manual text editing/preview.
+- `core/caption/*` + `feature/editor/caption/*` — subtitle segments, SRT import/export, caption timeline and preview.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 
 ## Completed progression
@@ -81,30 +84,31 @@ Important modules:
 - Patch 09: timing model, uniform speed, reverse foundation, freeze clips, timing persistence and timing-aware timeline math.
 - Patch 10: independent image/video overlay/PIP clips, z-order, drag/trim, shared transforms, synchronized preview composition, undo/redo and persistence.
 - Patch 11: timed manual text layers, content editing, text timeline move/trim, text z-order, style/transform controls, renderer-independent text composition, undo/redo and persistence.
+- Patch 12: dedicated caption segments, native caption preview/timeline, manual segment editing/split, batch ±0.25s shift, SRT import/export, renderer-independent caption composition, undo/redo and schema v12 persistence.
 
-## Patch 11 behavior/limits
-- Text clips use absolute project time and are normalized when the base video duration changes.
-- Manual text supports multiline content, size/color/background/bold/alignment plus scale/position/rotation/opacity.
-- Text preview is implemented with native Views, but `TextComposition` and model state are Android-View-free for deterministic export reuse.
-- Text layers currently sit above visual PIP layers as a group; unified cross-type layer ordering is future compositor work.
-- SRT import/export, caption segmentation, auto captions, per-word/karaoke styling, text animations and font asset packs are intentionally not completed.
+## Patch 12 behavior/limits
+- Captions are a dedicated track, separate from free-form `TextClip` layers.
+- SRT import replaces the caption track as one undoable edit; export writes current normalized cues.
+- Caption cues use absolute project time and are clamped to the current base-video project duration.
+- Caption preview uses native Views, while `CaptionComposition` / model state remain Android-View-free for deterministic export reuse.
+- Three caption-safe presets exist now: BOXED, CLEAN and LARGE. Rich font packs, outline/shadow, animation and per-word styling are later work.
+- Auto captions / speech recognition and word-level timing remain future AI/text milestones.
 
 ## Explicitly not completed
 - Speed curves UI/easing.
 - Production reverse decoder or reversed source audio.
 - Freeze duration UI beyond default insertion.
 - Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
-- SRT import/export, subtitle segmentation, auto captions, per-word/karaoke timing, TTS and text animation.
+- Auto captions, per-word/karaoke timing, TTS and text animation.
 - Effects/transitions/color grading.
 - Keyframes/masks/chroma/tracking/stabilization.
 - Production export compositor.
 - AI/templates/cloud/account/subscription.
 
 ## Next milestone
-**Patch 12 — Caption/Subtitles Foundation**
-- subtitle/caption segment model built on the Patch 11 text layer foundation,
-- SRT import/export and caption segment editing,
-- caption-safe styling/presets and batch timing operations,
-- persistence + undo/redo; auto-caption/word-level timing remains later AI work.
+**Patch 13 — Text / Caption Expansion Foundation**
+- caption/text polish, reusable presets and font architecture,
+- groundwork for text/caption animation without coupling state to Android Views,
+- keep auto-caption speech recognition and per-word timing for later AI work unless owner changes priority.
 
 See `WORKPLAN.md` for the full roadmap.

@@ -176,6 +176,24 @@ data class TextClip(
 }
 
 
+
+enum class CaptionPreset {
+    BOXED,
+    CLEAN,
+    LARGE
+}
+
+data class CaptionSegment(
+    val id: String,
+    val text: String,
+    val timelineStartMs: Int,
+    val durationMs: Int,
+    val preset: CaptionPreset = CaptionPreset.BOXED
+) {
+    val timelineEndMs: Int
+        get() = timelineStartMs + durationMs
+}
+
 data class AudioAsset(
     val id: String,
     val uri: String,
@@ -212,12 +230,14 @@ data class Project(
     val overlayAssets: List<OverlayAsset> = emptyList(),
     val overlayClips: List<OverlayClip> = emptyList(),
     val textClips: List<TextClip> = emptyList(),
+    val captionSegments: List<CaptionSegment> = emptyList(),
     val canvasSettings: CanvasSettings = CanvasSettings(),
     val playheadMs: Int = 0,
     val selectedClipId: String? = null,
     val selectedAudioClipId: String? = null,
     val selectedOverlayClipId: String? = null,
     val selectedTextClipId: String? = null,
+    val selectedCaptionSegmentId: String? = null,
     val timelineZoom: Float = 1f,
     val timelineViewportStartMs: Int = 0
 ) {
