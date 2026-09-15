@@ -361,6 +361,7 @@ data class TextClip(
     val zIndex: Int = 0,
     val style: TextStyle = TextStyle(),
     val transform: TextTransform = TextTransform(),
+    val keyframes: TransformKeyframeSet = TransformKeyframeSet(),
     val preset: TextPreset = TextPreset.CUSTOM,
     val animation: TextAnimationSpec = TextAnimationSpec()
 ) {
@@ -417,6 +418,12 @@ data class AudioAsset(
     val durationMs: Int = 0
 )
 
+enum class AudioRole {
+    MUSIC,
+    VOICE,
+    SFX
+}
+
 data class AudioClip(
     val id: String,
     val assetId: String,
@@ -426,7 +433,10 @@ data class AudioClip(
     val volume: Float = 1f,
     val muted: Boolean = false,
     val fadeInMs: Int = 0,
-    val fadeOutMs: Int = 0
+    val fadeOutMs: Int = 0,
+    val role: AudioRole = AudioRole.MUSIC,
+    val pan: Float = 0f,
+    val duckingAmount: Float = 0.55f
 ) {
     val durationMs: Int
         get() = (sourceEndMs - sourceStartMs).coerceAtLeast(0)

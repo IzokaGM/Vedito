@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
+import com.vedito.app.core.model.AudioRole
 import kotlin.math.abs
 
 /**
@@ -75,7 +76,10 @@ class AudioPlaybackEngine(private val context: Context) {
             val target = (clip.sourceStartMs + (lastTimelineMs - clip.timelineStartMs))
                 .coerceIn(clip.sourceStartMs, (clip.sourceEndMs - 1).coerceAtLeast(clip.sourceStartMs))
             val gain = effectiveGain(clip, lastTimelineMs)
-            slot.player.setVolume(gain, gain)
+            val pan = clip.pan.coerceIn(-1f, 1f)
+            val left = if (pan < 0f) 1f else 1f - pan
+            val right = if (pan > 0f) 1f else 1f + pan
+            slot.player.setVolume(gain * left, gain * right)
             if (!slot.prepared) {
                 slot.pendingPositionMs = target
                 slot.pendingPlay = playing
@@ -122,7 +126,27 @@ class AudioPlaybackEngine(private val context: Context) {
         val remainingMs = (clip.timelineEndMs - timelineMs).coerceIn(0, clip.durationMs)
         val fadeInGain = if (clip.fadeInMs > 0) (localMs.toFloat() / clip.fadeInMs).coerceIn(0f, 1f) else 1f
         val fadeOutGain = if (clip.fadeOutMs > 0) (remainingMs.toFloat() / clip.fadeOutMs).coerceIn(0f, 1f) else 1f
-        return (clip.volume.coerceIn(0f, 1f) * minOf(fadeInGain, fadeOutGain)).coerceIn(0f, 1f)
+        val duck = if (clip.role == AudioRole.MUSIC && clip.duckingAmount > 0f) {
+            (1f - clip.duckingAmount.coerceIn(0f, 0.9f) * voiceDuckStrength(timelineMs)).coerceIn(0.1f, 1f)
+        } else 1f
+        return (clip.volume.coerceIn(0f, 1f) * minOf(fadeInGain, fadeOutGain) * duck).coerceIn(0f, 1f)
+    }
+
+    private fun voiceDuckStrength(timelineMs: Int): Float {
+        var strongest = 0f
+        clips.forEach { voice ->
+            if (voice.role != AudioRole.VOICE || voice.muted || voice.volume <= 0f) return@forEach
+            val start = voice.timelineStartMs - DUCK_ATTACK_MS
+            val end = voice.timelineEndMs + DUCK_RELEASE_MS
+            val strength = when {
+                timelineMs < start || timelineMs > end -> 0f
+                timelineMs < voice.timelineStartMs -> ((timelineMs - start).toFloat() / DUCK_ATTACK_MS).coerceIn(0f, 1f)
+                timelineMs <= voice.timelineEndMs -> 1f
+                else -> ((end - timelineMs).toFloat() / DUCK_RELEASE_MS).coerceIn(0f, 1f)
+            }
+            strongest = maxOf(strongest, strength)
+        }
+        return strongest
     }
 
     private fun createSlot(clip: AudioClip, asset: AudioAsset): Slot? {
@@ -165,5 +189,7 @@ class AudioPlaybackEngine(private val context: Context) {
         private const val DRIFT_TOLERANCE_MS = 140
         private const val PREWARM_WINDOW_MS = 15_000
         private const val MAX_PREWARM_SLOTS = 4
+        private const val DUCK_ATTACK_MS = 180
+        private const val DUCK_RELEASE_MS = 360
     }
 }

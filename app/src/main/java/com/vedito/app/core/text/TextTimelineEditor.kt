@@ -46,6 +46,7 @@ object TextTimelineEditor {
             zIndex = clip.zIndex.coerceAtLeast(0),
             style = normalizeStyle(clip.style),
             transform = normalizeTransform(clip.transform),
+            keyframes = TextKeyframeEngine.normalize(clip.keyframes, duration),
             animation = TextMotion.normalize(clip.animation, duration)
         )
     }
@@ -59,16 +60,34 @@ object TextTimelineEditor {
         val oldEnd = clip.timelineEndMs.coerceAtMost(projectDurationMs)
         val latestStart = (oldEnd - MIN_DURATION_MS).coerceAtLeast(0)
         val start = requestedStartMs.coerceIn(0, latestStart)
+        val newDuration = (oldEnd - start).coerceAtLeast(MIN_DURATION_MS)
+        val startDelta = start - clip.timelineStartMs
         return clip.copy(
             timelineStartMs = start,
-            durationMs = (oldEnd - start).coerceAtLeast(MIN_DURATION_MS)
+            durationMs = newDuration,
+            keyframes = TextKeyframeEngine.remapForLeftEdge(
+                base = clip.transform,
+                keyframes = clip.keyframes,
+                oldDurationMs = clip.durationMs,
+                startDeltaMs = startDelta,
+                newDurationMs = newDuration
+            )
         )
     }
 
     fun trimRight(clip: TextClip, requestedEndMs: Int, projectDurationMs: Int): TextClip {
         val minEnd = clip.timelineStartMs + MIN_DURATION_MS
         val end = requestedEndMs.coerceIn(minEnd, projectDurationMs)
-        return clip.copy(durationMs = (end - clip.timelineStartMs).coerceAtLeast(MIN_DURATION_MS))
+        val newDuration = (end - clip.timelineStartMs).coerceAtLeast(MIN_DURATION_MS)
+        return clip.copy(
+            durationMs = newDuration,
+            keyframes = TextKeyframeEngine.remapForRightEdge(
+                base = clip.transform,
+                keyframes = clip.keyframes,
+                oldDurationMs = clip.durationMs,
+                newDurationMs = newDuration
+            )
+        )
     }
 
     fun raise(clips: List<TextClip>, id: String): List<TextClip> {

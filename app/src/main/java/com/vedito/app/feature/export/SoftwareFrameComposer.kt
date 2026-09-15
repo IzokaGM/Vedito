@@ -50,6 +50,7 @@ import com.vedito.app.core.model.VideoEffectKind
 import com.vedito.app.core.overlay.OverlayComposition
 import com.vedito.app.core.text.TextComposition
 import com.vedito.app.core.text.TextMotion
+import com.vedito.app.core.text.TextKeyframeEngine
 import com.vedito.app.core.visual.MaskChromaComposition
 import com.vedito.app.core.visual.VisualTransformMath
 import java.io.Closeable
@@ -453,7 +454,7 @@ class SoftwareFrameComposer(
     private fun drawTextClip(canvas: Canvas, clip: TextClip, localMs: Int) {
         val motion = TextMotion.frame(clip.animation, localMs, clip.durationMs)
         val style = clip.style
-        val transform = clip.transform
+        val transform = TextKeyframeEngine.evaluate(clip.transform, clip.keyframes, localMs, clip.durationMs)
         val maxWidth = (plan.width * 0.82f).roundToInt().coerceAtLeast(16)
         val padding = (8f * dpScale).roundToInt()
         val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {

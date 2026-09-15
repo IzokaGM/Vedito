@@ -60,7 +60,7 @@ Pending:
 - HSL/curves/wheels/LUT expansion on the Patch 18 color model.
 
 ## Stage 4 — Audio
-**Pro foundation completed through Patch 07; advanced audio pending.**
+**Advanced audio foundation completed through Patch 26; capture/processing tools still pending.**
 Completed:
 - Audio import/assets/clips, overlapping preview.
 - Waveforms, selection, move/snap/trim/split.
@@ -68,19 +68,19 @@ Completed:
 - Extract audio for normal 1× forward clips.
 - Persistence + undo/redo.
 - Major Patch 20 export parity: source-video sound + overlapping audio clips render to stereo AAC with volume/mute/fades.
+- Patch 26 independent audio roles (MUSIC/VOICE/SFX), stereo pan and automatic music ducking under VOICE clips with preview/export parity.
 
 Pending:
 - Voice-over recording.
-- Ducking.
 - Noise reduction/voice enhancement.
 - Pitch/voice effects.
 - Beat detection/markers.
 - Retime/reverse audio model for retimed source extraction.
 
 ## Stage 5 — Text & captions
-**Core manual text/caption foundation completed through Patch 13; advanced/AI text remains pending.**
-Completed: timed manual text layers, dedicated caption segments, SRT import/export, segment move/trim/split, batch caption shift, reusable text presets, shared font-family keys, caption-safe presets, deterministic basic Fade/Pop/Slide-Up animation, preview composition, persistence + undo/redo.
-Pending: custom/downloaded font packs, advanced/keyframed text animation, auto captions, correction workflow, karaoke/per-word timing, TTS.
+**Manual text/caption foundation plus text transform keyframes completed through Patch 26; advanced/AI text remains pending.**
+Completed: timed manual text layers, dedicated caption segments, SRT import/export, segment move/trim/split, batch caption shift, reusable text presets, shared font-family keys, caption-safe presets, deterministic basic Fade/Pop/Slide-Up animation, Patch 26 transform keyframes with easing/navigation/trim-safe remap, preview/export composition, persistence + undo/redo.
+Pending: custom/downloaded font packs, keyframed text style/animation parameters, auto captions, correction workflow, karaoke/per-word timing, TTS.
 
 ## Stage 6 — Effects / transitions
 **Foundation through Patch 18; timed effects plus shared GPU-oriented color/composition state exist, advanced shader library still pending.**
@@ -101,8 +101,8 @@ Pending:
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 25 extends the canonical GPU source graph with advanced color while retaining Patch 24 recovery.**
-Completed through Patch 25:
+**In progress — Patch 26 extends canonical audio/text render state while retaining Patch 24 recovery.**
+Completed through Patch 26:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
@@ -110,6 +110,8 @@ Completed through Patch 25:
 - Main visual/keyframe/stabilization/mask/chroma/color/effects/transition + overlay/text/caption frame composition.
 - Source-video audio + overlapping independent audio-track mix.
 - Audio-track volume/mute/fade parity.
+- Patch 26 audio role/pan/automatic music-ducking parity for independent tracks.
+- Patch 26 text transform keyframes share canonical interpolation/easing between preview and software export.
 - Forward speed-audio overlap-add stretch foundation; reverse/freeze source audio follows current muted preview policy.
 - Progress/cancel/error handling, cancellation-aware audio decoding, bounded mux startup, PTS hardening and partial-file cleanup.
 - Forward/freeze MediaCodec streaming video decode with bounded decoder pool + automatic random-access fallback.
@@ -129,7 +131,7 @@ Pending:
 - Zero-copy OES/SurfaceTexture decoder-to-GPU source path and broader GPU overlay graph.
 - Persistent foreground/WorkManager export execution across aggressive process/background lifecycle events.
 - Arbitrary/manual bitrate controls beyond the safe Patch 22 planner.
-- Studio-grade time stretch/pitch tools, ducking, NR/voice enhancement and voice effects.
+- Studio-grade time stretch/pitch tools, voice-over capture, NR/voice enhancement and voice effects.
 
 ## Stage 8 — AI suite
 **Pending after core/export maturity.**
@@ -240,11 +242,15 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Full-length AAC checkpoint + lossless final remux.
   - Resume-aware cache/destination storage preflight and thermal checkpoint hardening.
   - Per-segment decoder/GPU/compositor resource reacquisition; schema remains v18.
-- **Patch 25:** Advanced Color / LUT / Curves Foundation — current patch.
+- **Patch 25:** Advanced Color / LUT / Curves Foundation — locked after CI/device verification.
   - Five-anchor Master/R/G/B curves, global HSL and built-in LUT look/intensity state.
   - Unified API 33+ preview shader + GLES export + CPU fallback parity.
   - Schema v19 persistence and Patch 24 recovery fingerprint invalidation.
-- **Patch 26+:** advanced audio/text, AI/templates/cloud and release hardening.
+- **Patch 26:** Advanced Audio / Text Expansion Foundation — current patch.
+  - Independent audio role/pan/music-ducking controls with preview/export parity.
+  - Text transform keyframes with shared easing, navigation, trim-safe remap and preview/export parity.
+  - Schema v20 + `vedito-render-p26-r1` recovery invalidation.
+- **Patch 27+:** foreground export/release hardening, then advanced capture/AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

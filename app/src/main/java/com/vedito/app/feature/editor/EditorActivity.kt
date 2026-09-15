@@ -80,6 +80,7 @@ import com.vedito.app.core.timeline.TimelineEditor
 import com.vedito.app.core.timeline.TimelineIndex
 import com.vedito.app.core.timeline.TimelineMath
 import com.vedito.app.core.text.TextMotion
+import com.vedito.app.core.text.TextKeyframeEngine
 import com.vedito.app.core.text.TextPresetCatalog
 import com.vedito.app.core.text.TextTimelineEditor
 import com.vedito.app.core.visual.MaskChromaComposition
@@ -284,6 +285,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.audioSplitButton.setOnClickListener { splitSelectedAudioAtPlayhead() }
         binding.audioFadeInButton.setOnClickListener { cycleSelectedAudioFade(inward = true) }
         binding.audioFadeOutButton.setOnClickListener { cycleSelectedAudioFade(inward = false) }
+        binding.audioRoleButton.setOnClickListener { cycleSelectedAudioRole() }
+        binding.audioPanButton.setOnClickListener { cycleSelectedAudioPan() }
+        binding.audioDuckButton.setOnClickListener { cycleSelectedAudioDucking() }
         binding.extractAudioButton.setOnClickListener { extractAudioFromSelectedVideo() }
         binding.addOverlayButton.setOnClickListener {
             if (!addingOverlay) addOverlayPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
@@ -1119,21 +1123,21 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
     private fun handleTextAction(action: TextToolbarView.Action) {
         when (action) {
-            TextToolbarView.Action.SCALE_DOWN -> mutateSelectedText { it.copy(transform = it.transform.copy(scale = it.transform.scale - 0.1f)) }
-            TextToolbarView.Action.SCALE_UP -> mutateSelectedText { it.copy(transform = it.transform.copy(scale = it.transform.scale + 0.1f)) }
-            TextToolbarView.Action.MOVE_LEFT -> mutateSelectedText { it.copy(transform = it.transform.copy(positionX = it.transform.positionX - TEXT_POSITION_STEP)) }
-            TextToolbarView.Action.MOVE_RIGHT -> mutateSelectedText { it.copy(transform = it.transform.copy(positionX = it.transform.positionX + TEXT_POSITION_STEP)) }
-            TextToolbarView.Action.MOVE_UP -> mutateSelectedText { it.copy(transform = it.transform.copy(positionY = it.transform.positionY - TEXT_POSITION_STEP)) }
-            TextToolbarView.Action.MOVE_DOWN -> mutateSelectedText { it.copy(transform = it.transform.copy(positionY = it.transform.positionY + TEXT_POSITION_STEP)) }
-            TextToolbarView.Action.ROTATE -> mutateSelectedText { it.copy(transform = it.transform.copy(rotationDegrees = it.transform.rotationDegrees + 15f)) }
-            TextToolbarView.Action.OPACITY -> mutateSelectedText {
+            TextToolbarView.Action.SCALE_DOWN -> mutateSelectedTextTransform { it.copy(scale = it.scale - 0.1f) }
+            TextToolbarView.Action.SCALE_UP -> mutateSelectedTextTransform { it.copy(scale = it.scale + 0.1f) }
+            TextToolbarView.Action.MOVE_LEFT -> mutateSelectedTextTransform { it.copy(positionX = it.positionX - TEXT_POSITION_STEP) }
+            TextToolbarView.Action.MOVE_RIGHT -> mutateSelectedTextTransform { it.copy(positionX = it.positionX + TEXT_POSITION_STEP) }
+            TextToolbarView.Action.MOVE_UP -> mutateSelectedTextTransform { it.copy(positionY = it.positionY - TEXT_POSITION_STEP) }
+            TextToolbarView.Action.MOVE_DOWN -> mutateSelectedTextTransform { it.copy(positionY = it.positionY + TEXT_POSITION_STEP) }
+            TextToolbarView.Action.ROTATE -> mutateSelectedTextTransform { it.copy(rotationDegrees = it.rotationDegrees + 15f) }
+            TextToolbarView.Action.OPACITY -> mutateSelectedTextTransform { transform ->
                 val next = when {
-                    it.transform.opacity > 0.76f -> 0.75f
-                    it.transform.opacity > 0.51f -> 0.50f
-                    it.transform.opacity > 0.26f -> 0.25f
+                    transform.opacity > 0.76f -> 0.75f
+                    transform.opacity > 0.51f -> 0.50f
+                    transform.opacity > 0.26f -> 0.25f
                     else -> 1f
                 }
-                it.copy(transform = it.transform.copy(opacity = next))
+                transform.copy(opacity = next)
             }
             TextToolbarView.Action.FONT_DOWN -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp - 4f), preset = TextPreset.CUSTOM) }
             TextToolbarView.Action.FONT_UP -> mutateSelectedText { it.copy(style = it.style.copy(fontSizeSp = it.style.fontSizeSp + 4f), preset = TextPreset.CUSTOM) }
@@ -1175,8 +1179,93 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             TextToolbarView.Action.SHADOW -> mutateSelectedText { clip ->
                 clip.copy(style = clip.style.copy(shadowEnabled = !clip.style.shadowEnabled), preset = TextPreset.CUSTOM)
             }
-            TextToolbarView.Action.RESET_TRANSFORM -> mutateSelectedText { it.copy(transform = TextTransform()) }
+            TextToolbarView.Action.KEYFRAME_TOGGLE -> toggleSelectedTextKeyframe()
+            TextToolbarView.Action.KEYFRAME_PREVIOUS -> jumpSelectedTextKeyframe(previous = true)
+            TextToolbarView.Action.KEYFRAME_NEXT -> jumpSelectedTextKeyframe(previous = false)
+            TextToolbarView.Action.KEYFRAME_EASING -> cycleSelectedTextKeyframeEasing()
+            TextToolbarView.Action.RESET_TRANSFORM -> mutateSelectedTextTransform { TextTransform() }
         }
+    }
+
+    private fun mutateSelectedTextTransform(change: (TextTransform) -> TextTransform) {
+        val id = selectedTextClipId ?: return
+        val index = textClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = textClips[index]
+        val local = (timelinePositionMs - current.timelineStartMs).coerceIn(0, current.durationMs)
+        val evaluated = TextKeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+        val changed = TextTimelineEditor.normalizeTransform(change(evaluated))
+        val updated = if (current.keyframes.isEmpty) {
+            current.copy(transform = changed)
+        } else {
+            current.copy(keyframes = TextKeyframeEngine.upsertTransform(changed, current.keyframes, local, current.durationMs))
+        }
+        if (updated == current) return
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        textClips = textClips.toMutableList().apply { this[index] = updated }
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun toggleSelectedTextKeyframe() {
+        val id = selectedTextClipId ?: return
+        val index = textClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val before = snapshot()
+        val current = textClips[index]
+        val local = (timelinePositionMs - current.timelineStartMs).coerceIn(0, current.durationMs)
+        val next = if (TextKeyframeEngine.hasAt(current.keyframes, local)) {
+            current.copy(keyframes = TextKeyframeEngine.removeAt(current.keyframes, local, current.durationMs))
+        } else {
+            val evaluated = TextKeyframeEngine.evaluate(current.transform, current.keyframes, local, current.durationMs)
+            current.copy(keyframes = TextKeyframeEngine.upsertTransform(evaluated, current.keyframes, local, current.durationMs))
+        }
+        if (next == current) return
+        textClips = textClips.toMutableList().apply { this[index] = next }
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        saveProject()
+        updateHistoryUi()
+    }
+
+    private fun jumpSelectedTextKeyframe(previous: Boolean) {
+        val clip = textClips.firstOrNull { it.id == selectedTextClipId } ?: return
+        val local = (timelinePositionMs - clip.timelineStartMs).coerceIn(0, clip.durationMs)
+        val target = if (previous) TextKeyframeEngine.previousPosition(clip.keyframes, local) else TextKeyframeEngine.nextPosition(clip.keyframes, local)
+        if (target == null) return
+        previewPlayer.pause()
+        audioPlayback.pause()
+        playbackClipId = null
+        timelinePositionMs = (clip.timelineStartMs + target).coerceIn(0, timelineIndex.totalDurationMs)
+        renderTimelineState()
+        seekPreviewToTimeline(timelinePositionMs)
+    }
+
+    private fun cycleSelectedTextKeyframeEasing() {
+        val id = selectedTextClipId ?: return
+        val index = textClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = textClips[index]
+        val local = (timelinePositionMs - current.timelineStartMs).coerceIn(0, current.durationMs)
+        val active = TextKeyframeEngine.easingAt(current.keyframes, local) ?: return
+        val values = KeyframeEasing.values()
+        val nextEasing = values[(values.indexOf(active).coerceAtLeast(0) + 1) % values.size]
+        val nextKeys = TextKeyframeEngine.setEasingAt(current.keyframes, local, nextEasing, current.durationMs)
+        if (nextKeys == current.keyframes) return
+        val before = snapshot()
+        textClips = textClips.toMutableList().apply { this[index] = current.copy(keyframes = nextKeys) }
+        history.record(before)
+        renderTextState()
+        updateTextUi()
+        saveProject()
+        updateHistoryUi()
     }
 
     private fun mutateSelectedText(change: (TextClip) -> TextClip) {
@@ -2235,6 +2324,36 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateHistoryUi()
     }
 
+    private fun cycleSelectedAudioRole() {
+        mutateSelectedAudio(AudioTimelineEditor::cycleRole)
+    }
+
+    private fun cycleSelectedAudioPan() {
+        mutateSelectedAudio(AudioTimelineEditor::cyclePan)
+    }
+
+    private fun cycleSelectedAudioDucking() {
+        mutateSelectedAudio(AudioTimelineEditor::cycleDucking)
+    }
+
+    private fun mutateSelectedAudio(change: (AudioClip) -> AudioClip) {
+        val id = selectedAudioClipId ?: return
+        val index = audioClips.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val current = audioClips[index]
+        val edited = change(current)
+        if (edited == current) return
+        val before = snapshot()
+        audioClips = audioClips.toMutableList().apply { this[index] = edited }
+        history.record(before)
+        audioPlayback.setTimeline(audioAssets, audioClips)
+        renderAudioState()
+        updateAudioUi()
+        audioPlayback.seekTo(timelinePositionMs)
+        saveProject()
+        updateHistoryUi()
+    }
+
     private fun extractAudioFromSelectedVideo() {
         val videoClip = clips.firstOrNull { it.id == selectedClipId } ?: return
         if (videoClip.timing.mode != ClipPlaybackMode.FORWARD || kotlin.math.abs(videoClip.timing.speed - 1f) >= 0.001f) return
@@ -2363,7 +2482,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             binding.audioDeleteButton,
             binding.audioSplitButton,
             binding.audioFadeInButton,
-            binding.audioFadeOutButton
+            binding.audioFadeOutButton,
+            binding.audioRoleButton,
+            binding.audioPanButton,
+            binding.audioDuckButton
         ).forEach { view ->
             view.isEnabled = enabled
             view.alpha = if (enabled) 1f else 0.38f
@@ -2372,6 +2494,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         if (selected == null) {
             binding.audioSelectionLabel.text = if (audioClips.isEmpty()) "No audio · add music or sound" else "Tap an audio clip to select"
             binding.audioMuteButton.text = "Mute"
+            binding.audioRoleButton.text = "Role music"
+            binding.audioPanButton.text = "Pan center"
+            binding.audioDuckButton.text = "Duck 55%"
             binding.audioSplitButton.isEnabled = false
             binding.audioSplitButton.alpha = 0.38f
             return
@@ -2382,8 +2507,17 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val volumePercent = (selected.volume * 100).roundToInt()
         val fadeIn = String.format("%.1f", selected.fadeInMs / 1000f)
         val fadeOut = String.format("%.1f", selected.fadeOutMs / 1000f)
-        binding.audioSelectionLabel.text = "$name · $volumePercent% · in ${fadeIn}s · out ${fadeOut}s${if (selected.muted) " · muted" else ""}"
+        val role = selected.role.name.lowercase()
+        val panLabel = when {
+            selected.pan < -0.15f -> "L ${(-selected.pan * 100).roundToInt()}%"
+            selected.pan > 0.15f -> "R ${(selected.pan * 100).roundToInt()}%"
+            else -> "center"
+        }
+        binding.audioSelectionLabel.text = "$name · $role · $volumePercent% · pan $panLabel · in ${fadeIn}s · out ${fadeOut}s${if (selected.muted) " · muted" else ""}"
         binding.audioMuteButton.text = if (selected.muted) "Unmute" else "Mute"
+        binding.audioRoleButton.text = "Role $role"
+        binding.audioPanButton.text = "Pan $panLabel"
+        binding.audioDuckButton.text = if (selected.role.name == "MUSIC") "Duck ${(selected.duckingAmount * 100).roundToInt()}%" else "Duck → music"
         val local = timelinePositionMs - selected.timelineStartMs
         val canSplitAudio = local >= MIN_AUDIO_SPLIT_EDGE_MS && selected.durationMs - local >= MIN_AUDIO_SPLIT_EDGE_MS
         binding.audioSplitButton.isEnabled = canSplitAudio
@@ -2714,7 +2848,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             view.isEnabled = enabled
             view.alpha = if (enabled) 1f else 0.38f
         }
-        binding.textToolbar.setState(selected)
+        val textLocalMs = selected?.let { (timelinePositionMs - it.timelineStartMs).coerceIn(0, it.durationMs) } ?: 0
+        binding.textToolbar.setState(selected, textLocalMs)
         if (selected == null) {
             binding.textSelectionLabel.text = if (textClips.isEmpty()) "No text · add a title or caption" else "Tap a text layer to select"
             return

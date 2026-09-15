@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.vedito.app.R
+import com.vedito.app.core.keyframe.KeyframeEngine
 import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.text.TextTimelineEditor
 import kotlin.math.abs
@@ -26,6 +27,7 @@ class TextTimelineView @JvmOverloads constructor(
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF17131F.toInt(); textSize = sp(9f) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = dp(1.5f) }
     private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); alpha = 220 }
+    private val keyframePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF5A47D8.toInt() }
 
     private var clips: List<TextClip> = emptyList()
     private var selectedId: String? = null
@@ -80,6 +82,12 @@ class TextTimelineView @JvmOverloads constructor(
             if (clip.id == selectedId) {
                 canvas.drawRect(x1, top, x1 + dp(4f), bottom, edgePaint)
                 canvas.drawRect(x2 - dp(4f), top, x2, bottom, edgePaint)
+                KeyframeEngine.positions(clip.keyframes).forEach { localMs ->
+                    val keyX = timeToX(clip.timelineStartMs + localMs)
+                    if (keyX in (x1 - dp(2f))..(x2 + dp(2f))) {
+                        canvas.drawCircle(keyX, bottom - dp(6f), dp(3f), keyframePaint)
+                    }
+                }
             }
             val label = clip.text.replace('\n', ' ').take(18).ifBlank { "Text" }
             canvas.drawText("T${clip.zIndex + 1} $label", x1 + dp(6f), top + laneHeight * 0.55f, textPaint)

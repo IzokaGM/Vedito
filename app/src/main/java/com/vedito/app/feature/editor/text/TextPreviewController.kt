@@ -12,6 +12,7 @@ import com.vedito.app.core.model.TextClip
 import com.vedito.app.core.text.TextComposition
 import com.vedito.app.core.text.TextLayer
 import com.vedito.app.core.text.TextMotion
+import com.vedito.app.core.text.TextKeyframeEngine
 import com.vedito.app.core.text.TextTimelineEditor
 import kotlin.math.roundToInt
 
@@ -71,7 +72,9 @@ class TextPreviewController(
 
     private fun applyLayer(node: Node, layer: TextLayer, selected: Boolean) {
         val clip = layer.clip
-        val transform = TextTimelineEditor.normalizeTransform(clip.transform)
+        val transform = TextTimelineEditor.normalizeTransform(
+            TextKeyframeEngine.evaluate(clip.transform, clip.keyframes, layer.localTimelineMs, clip.durationMs)
+        )
         val style = TextTimelineEditor.normalizeStyle(clip.style)
         node.text.text = clip.text
         node.text.textSize = style.fontSizeSp

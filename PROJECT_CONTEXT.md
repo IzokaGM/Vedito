@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.25.0 / versionCode 25**
+- Current patch: **0.26.0 / versionCode 26**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -52,10 +52,10 @@ Current external CI concept:
 - `StabilizationSpec`: renderer-independent stabilization enable/strength/auto-crop state.
 - `MotionTrackingEngine`: canonical tracking interpolation + trim/split/speed/reverse remapping + deterministic stabilization transform compensation.
 - `KeyframeEngine`: canonical interpolation/easing evaluator shared by preview now and future export; keyframes are local to their owning clip/layer.
-- `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades.
+- `AudioAsset` / `AudioClip`: independent overlapping audio timeline with trim, volume, mute, fades, MUSIC/VOICE/SFX role, stereo pan and configurable music ducking amount.
 - `OverlayAsset` / `OverlayClip`: independent timed image/video PIP layers with transform and z-order.
 - `OverlayComposition`: renderer-independent active-layer resolver shared concept for preview now and deterministic export later.
-- `TextClip`: timed free-form text layer with `TextStyle`, `TextTransform`, reusable `TextPreset`, `TextAnimationSpec` and z-order.
+- `TextClip`: timed free-form text layer with `TextStyle`, `TextTransform`, local transform `TransformKeyframeSet`, reusable `TextPreset`, `TextAnimationSpec` and z-order.
 - `TextFontFamily`: renderer-independent font family key (Sans/Serif/Mono/Rounded); Android preview maps keys to platform typefaces while export must map the same keys independently.
 - `TextMotion`: deterministic renderer-independent None/Fade/Pop/Slide-Up animation evaluator shared concept for preview/export.
 - `TextComposition`: renderer-independent active text-layer resolver for preview/export reuse.
@@ -68,7 +68,7 @@ Current external CI concept:
 - `Project`: video/audio/overlay/text/caption/effect state, canvas, playhead, selections and zoom/viewport.
 
 Important modules:
-- `core/projects/ProjectRepository.kt` — persistence, schema v19.
+- `core/projects/ProjectRepository.kt` — persistence, schema v20.
 - `core/timeline/ClipTimeMap.kt` — timing mapping shared concept for preview/export.
 - `core/timeline/TimelineIndex.kt`, `TimelineMath.kt`, `TimelineEditor.kt` — ripple timeline and destructive/timing operations.
 - `core/timeline/EditorHistory.kt` — runtime undo/redo snapshots.
@@ -79,17 +79,17 @@ Important modules:
 - `feature/editor/player/PreviewPlayer.kt` — forward speed preview plus seek-driven reverse/freeze playback foundation.
 - `feature/editor/timing/TimingToolbarView.kt` — speed/freeze/reverse controls.
 - `core/visual/VisualTransformMath.kt` / `TransformToolbarView.kt` — visual transforms/canvas.
-- `core/audio/*` + `feature/editor/audio/AudioTimelineView.kt` — audio foundation.
+- `core/audio/*` + `feature/editor/audio/AudioTimelineView.kt` — audio timeline, role/pan/ducking preview and edit foundation.
 - `core/overlay/OverlayComposition.kt`, `OverlayTimelineEditor.kt` — renderer-independent PIP layer resolution and timing edits.
 - `feature/editor/overlay/OverlayTimelineView.kt`, `OverlayPreviewController.kt` — overlay editing/preview implementation.
-- `core/text/TextComposition.kt`, `TextTimelineEditor.kt`, `TextPresetCatalog.kt`, `TextMotion.kt` — text timing/layer/preset/animation rules.
+- `core/text/TextComposition.kt`, `TextTimelineEditor.kt`, `TextPresetCatalog.kt`, `TextMotion.kt`, `TextKeyframeEngine.kt` — text timing/layer/preset/animation plus transform-keyframe rules.
 - `feature/editor/text/TextTimelineView.kt`, `TextToolbarView.kt`, `TextPreviewController.kt` — native manual text editing/preview.
 - `core/caption/*` + `feature/editor/caption/*` — subtitle segments, SRT import/export, caption timeline and preview.
 - `core/effect/EffectTimelineEditor.kt`, `EffectComposition.kt` — timed effect editing plus renderer-independent effect/transition state.
 - `feature/editor/effect/*` — FX timeline, controls and native preview composition.
 - `feature/editor/EditorActivity.kt` — current editor orchestration.
 - `core/export/ExportPlan.kt` / `ExportSupport.kt` — Android-free export sizing/capability contract.
-- `core/export/AudioMixPlan.kt` — renderer-independent source-video/audio-track timing, volume, mute and fade contract for preview/export parity.
+- `core/export/AudioMixPlan.kt` — renderer-independent source-video/audio-track timing, volume, mute, fade, role, pan and automatic ducking contract for preview/export parity.
 - `core/export/RenderPerformancePlan.kt` — Android-free streaming/random frame-access policy plus bounded GPU post-process plan.
 - `feature/export/StreamingVideoFrameDecoder.kt` / `VideoFrameSourcePool.kt` — bounded MediaCodec streaming frame acquisition with automatic random-access fallback.
 - `feature/export/SoftwareFrameComposer.kt` — hybrid base/overlay plane compositor consuming canonical project/composition state.
@@ -128,6 +128,7 @@ Important modules:
 - Patch 23: encoder-surface GPU main-source graph for transform/chroma/color/mask, retained decoder leases, and bounded MediaCodec reverse GOP-tail cache with random-access fallback.
 - Patch 24: frame-boundary video checkpoints, resumable cache-backed export sessions, single full-length AAC checkpoint, no-reencode final remux, resume-aware storage preflight, thermal checkpoint backoff and per-segment decoder/GPU reacquisition.
 - Patch 25: schema v19 advanced color state with five-anchor RGB curves, global HSL, built-in LUT looks/intensity, API 33+ unified RuntimeShader preview, GLES export parity, CPU fallback parity and recovery fingerprint invalidation.
+- Patch 26: schema v20 audio role/pan/voice-priority ducking for independent audio tracks plus text transform keyframes with shared easing, trim-safe timing, preview/export parity and recovery fingerprint invalidation.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -142,8 +143,8 @@ Important modules:
 - Speed curves UI/easing.
 - Studio-grade reverse source audio remains pending; reverse video now has the Patch 23 bounded MediaCodec cache foundation.
 - Freeze duration UI beyond default insertion.
-- Voice-over, ducking, NR/voice enhancement, pitch/voice effects, beat markers.
-- Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and advanced/keyframed text animation.
+- Voice-over recording, NR/voice enhancement, pitch/voice effects, beat detection/markers and studio-grade time stretch remain pending. Patch 26 adds deterministic role-based music ducking for independent audio tracks.
+- Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and keyframed text style/animation parameters remain pending. Patch 26 adds transform keyframes for text.
 - Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
@@ -228,7 +229,18 @@ Important modules:
 - Project persistence is schema v19. Older projects without advanced fields load neutral defaults.
 - Export recovery render salt is bumped to `vedito-render-p25-r1`, invalidating stale Patch 24 checkpoints after the pixel pipeline change.
 
+## Patch 26 behavior/limits
+- Independent audio clips persist `AudioRole` (`MUSIC`, `VOICE`, `SFX`), stereo `pan` and `duckingAmount`; older projects load as MUSIC, centered, with 55% ducking ready but only applied when an audible VOICE clip overlaps.
+- Automatic ducking is deterministic and voice-priority: only independent MUSIC clips are attenuated around overlapping independent VOICE clips, with fixed 180 ms attack and 360 ms release. Source-video audio does not automatically become a duck trigger.
+- Preview `AudioPlaybackEngine` and export `AudioMixPlan`/`OfflineAudioMixer` apply the same role/pan/ducking state. Center pan preserves legacy left/right gain; pan attenuates only the opposite channel.
+- Text clips now persist local transform keyframes for scale, position X/Y, rotation and opacity using the existing `TransformKeyframeSet` / `KeyframeEasing` model.
+- `TextKeyframeEngine` adapts the canonical `KeyframeEngine`; preview and software export evaluate the same interpolation. Toolbar controls add/remove/navigate keyframes and cycle easing.
+- Text left/right trims preserve animation timing at the surviving boundary, including an interpolated boundary keyframe when trimming inward. Timeline keyframe markers are visible on the selected text clip.
+- Project persistence is schema v20. Missing Patch 26 fields from older projects normalize to safe defaults.
+- Export recovery render salt is `vedito-render-p26-r1`, invalidating Patch 25 checkpoints after audio/text render semantics changed.
+- Patch 26 does not add voice-over recording, NR/voice enhancement, pitch shifting, beat detection, auto captions, karaoke/per-word captions, TTS, custom font downloads or keyframed text style properties.
+
 ## Next milestone
-**Patch 26 — Advanced Audio / Text Expansion Foundation**
+**Patch 27 — Foreground Export / Release Hardening Foundation**
 
 See `WORKPLAN.md` for the full roadmap.

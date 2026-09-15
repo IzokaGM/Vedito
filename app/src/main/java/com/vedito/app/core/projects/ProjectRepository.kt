@@ -3,6 +3,7 @@ package com.vedito.app.core.projects
 import android.content.Context
 import com.vedito.app.core.model.AudioAsset
 import com.vedito.app.core.model.AudioClip
+import com.vedito.app.core.model.AudioRole
 import com.vedito.app.core.model.CanvasAspect
 import com.vedito.app.core.model.CanvasBackground
 import com.vedito.app.core.model.CanvasSettings
@@ -392,7 +393,10 @@ class ProjectRepository(context: Context) {
                         volume = clip.optDouble("volume", 1.0).toFloat().coerceIn(0f, 1f),
                         muted = clip.optBoolean("muted", false),
                         fadeInMs = clip.optInt("fadeInMs", 0).coerceAtLeast(0),
-                        fadeOutMs = clip.optInt("fadeOutMs", 0).coerceAtLeast(0)
+                        fadeOutMs = clip.optInt("fadeOutMs", 0).coerceAtLeast(0),
+                        role = enumValueOrDefault(clip.optString("role"), AudioRole.MUSIC),
+                        pan = clip.optDouble("pan", 0.0).toFloat().coerceIn(-1f, 1f),
+                        duckingAmount = clip.optDouble("duckingAmount", 0.55).toFloat().coerceIn(0f, 0.9f)
                     )
                 )
             }
@@ -490,6 +494,7 @@ class ProjectRepository(context: Context) {
                                 opacity = transformJson?.optDouble("opacity", 1.0)?.toFloat() ?: 1f
                             )
                         ),
+                        keyframes = KeyframeEngine.normalize(parseTransformKeyframes(clip.optJSONObject("keyframes")), duration),
                         preset = enumValueOrDefault(clip.optString("preset"), TextPreset.CUSTOM),
                         animation = parseTextAnimation(clip.optJSONObject("animation"))
                     )
@@ -611,6 +616,9 @@ class ProjectRepository(context: Context) {
                     .put("muted", clip.muted)
                     .put("fadeInMs", clip.fadeInMs)
                     .put("fadeOutMs", clip.fadeOutMs)
+                    .put("role", clip.role.name)
+                    .put("pan", clip.pan.toDouble())
+                    .put("duckingAmount", clip.duckingAmount.toDouble())
             )
         }
 
@@ -673,6 +681,7 @@ class ProjectRepository(context: Context) {
                             .put("rotationDegrees", clip.transform.rotationDegrees.toDouble())
                             .put("opacity", clip.transform.opacity.toDouble())
                     )
+                    .put("keyframes", transformKeyframesToJson(clip.keyframes))
                     .put("preset", clip.preset.name)
                     .put("animation", textAnimationToJson(clip.animation))
             )
@@ -928,6 +937,6 @@ class ProjectRepository(context: Context) {
         private const val PREFS_NAME = "vedito_project_index_v2"
         private const val KEY_PROJECTS = "projects"
         private const val MAX_PROJECTS = 12
-        private const val SCHEMA_VERSION = 19
+        private const val SCHEMA_VERSION = 20
     }
 }

@@ -143,6 +143,7 @@ internal class OfflineAudioMixer(
         if (pcm.size < 2) return
         val availableFrames = pcm.size / 2
 
+        val stereoGains = AudioMixMath.stereoGains(segment)
         var outputSample = overlapStart
         while (outputSample < overlapEnd) {
             checkCancelled()
@@ -166,8 +167,8 @@ internal class OfflineAudioMixer(
                     sampleLinearStereo(pcm, availableFrames, range.first, sourceFrame)
                 }
                 val out = chunkIndex * 2
-                mixed[out] += pair.first * gain
-                mixed[out + 1] += pair.second * gain
+                mixed[out] += pair.first * gain * stereoGains.first
+                mixed[out + 1] += pair.second * gain * stereoGains.second
             }
             outputSample++
         }

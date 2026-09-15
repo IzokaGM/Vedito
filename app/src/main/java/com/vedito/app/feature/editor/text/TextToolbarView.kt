@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.vedito.app.R
 import com.vedito.app.core.model.TextClip
+import com.vedito.app.core.text.TextKeyframeEngine
 import kotlin.math.roundToInt
 
 class TextToolbarView @JvmOverloads constructor(
@@ -36,6 +37,10 @@ class TextToolbarView @JvmOverloads constructor(
         FONT_FAMILY,
         ANIMATION,
         SHADOW,
+        KEYFRAME_TOGGLE,
+        KEYFRAME_PREVIOUS,
+        KEYFRAME_NEXT,
+        KEYFRAME_EASING,
         RESET_TRANSFORM
     }
 
@@ -70,10 +75,14 @@ class TextToolbarView @JvmOverloads constructor(
         add(Action.FONT_FAMILY, "Font")
         add(Action.ANIMATION, "Anim")
         add(Action.SHADOW, "Shadow")
+        add(Action.KEYFRAME_TOGGLE, "◆ Key")
+        add(Action.KEYFRAME_PREVIOUS, "◆ ←")
+        add(Action.KEYFRAME_NEXT, "◆ →")
+        add(Action.KEYFRAME_EASING, "Ease")
         add(Action.RESET_TRANSFORM, "Reset")
     }
 
-    fun setState(clip: TextClip?) {
+    fun setState(clip: TextClip?, localTimeMs: Int = 0) {
         val enabled = clip != null
         buttons.values.forEach { view ->
             view.isEnabled = enabled
@@ -91,11 +100,15 @@ class TextToolbarView @JvmOverloads constructor(
             buttons[Action.FONT_FAMILY]?.text = "Font"
             buttons[Action.ANIMATION]?.text = "Anim"
             buttons[Action.SHADOW]?.text = "Shadow"
+            buttons[Action.KEYFRAME_TOGGLE]?.text = "◆ Key"
+            buttons[Action.KEYFRAME_EASING]?.text = "Ease"
             return
         }
-        buttons[Action.SCALE_DOWN]?.text = "− ${(clip.transform.scale * 100).roundToInt()}%"
-        buttons[Action.SCALE_UP]?.text = "+ ${(clip.transform.scale * 100).roundToInt()}%"
-        buttons[Action.OPACITY]?.text = "Opacity ${(clip.transform.opacity * 100).roundToInt()}%"
+        val local = localTimeMs.coerceIn(0, clip.durationMs)
+        val effective = TextKeyframeEngine.evaluate(clip.transform, clip.keyframes, local, clip.durationMs)
+        buttons[Action.SCALE_DOWN]?.text = "− ${(effective.scale * 100).roundToInt()}%"
+        buttons[Action.SCALE_UP]?.text = "+ ${(effective.scale * 100).roundToInt()}%"
+        buttons[Action.OPACITY]?.text = "Opacity ${(effective.opacity * 100).roundToInt()}%"
         buttons[Action.FONT_DOWN]?.text = "− ${clip.style.fontSizeSp.roundToInt()}sp"
         buttons[Action.FONT_UP]?.text = "+ ${clip.style.fontSizeSp.roundToInt()}sp"
         buttons[Action.BOLD]?.text = if (clip.style.bold) "Bold on" else "Bold off"
@@ -104,6 +117,20 @@ class TextToolbarView @JvmOverloads constructor(
         buttons[Action.FONT_FAMILY]?.text = "Font ${clip.style.fontFamily.name.lowercase()}"
         buttons[Action.ANIMATION]?.text = "Anim ${clip.animation.kind.name.lowercase().replace('_', ' ')}"
         buttons[Action.SHADOW]?.text = if (clip.style.shadowEnabled) "Shadow on" else "Shadow off"
+        val count = clip.keyframes.pointCount
+        val hasHere = TextKeyframeEngine.hasAt(clip.keyframes, local)
+        buttons[Action.KEYFRAME_TOGGLE]?.text = when {
+            hasHere -> "◆ Remove"
+            count > 0 -> "◇ Add · $count"
+            else -> "◇ Add key"
+        }
+        val easing = TextKeyframeEngine.easingAt(clip.keyframes, local)
+        buttons[Action.KEYFRAME_EASING]?.text = easing?.name?.lowercase()?.replace('_', ' ')?.let { "Ease $it" } ?: "Ease —"
+        val navigationEnabled = count > 0
+        listOf(Action.KEYFRAME_PREVIOUS, Action.KEYFRAME_NEXT, Action.KEYFRAME_EASING).forEach { action ->
+            buttons[action]?.isEnabled = navigationEnabled
+            buttons[action]?.alpha = if (navigationEnabled) 1f else 0.35f
+        }
     }
 
     private fun add(action: Action, label: String) {
