@@ -260,11 +260,15 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Adds dark premium brand surfaces, cyan/blue signature gradient, and functional multi-accent semantic tokens.
   - Applies production mark to Home, adaptive launcher and Android 12+ splash.
   - Adds reusable typography/control styles and system-bar polish; project schema/render semantics remain v20 / `vedito-render-p26-r1`.
-- **Patch 28B:** Home UI Overhaul — current patch.
+- **Patch 28B:** Home UI Overhaul — locked after CI/device verification.
   - Premium mockup hierarchy, real import CTA, dashboard quick cards, video-thumbnail Recent Projects grid and bottom navigation shell.
   - Unsupported Templates/Profile surfaces remain explicitly preview/not-implemented rather than pretending to be functional.
   - Schema/render/recovery semantics unchanged.
-- **Patch 28C:** Editor UI Overhaul following the approved mockup direction.
+- **Patch 28C:** Editor UI Overhaul — current patch.
+  - Premium preview-first editor shell with dedicated timeline stage.
+  - Contextual auxiliary Text/Audio/Effects/Overlay/Captions lane instead of stacking every timeline permanently.
+  - Fixed category tool dock + context drawer removes the old debug-button/control-dump feel while preserving existing engine behavior.
+  - Schema/render/recovery semantics unchanged.
 - **Patch 28D:** Export UI Overhaul following the approved mockup direction.
 - **Patch 29+:** capture/voice-over, then AI/templates/cloud.
 

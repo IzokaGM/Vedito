@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.1 / versionCode 29**
+- Current patch: **0.28.2 / versionCode 30**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -51,6 +51,14 @@ Current external CI concept:
 - New Project and Assets use the real system video picker. Draft/Edit open the latest real project. Export routes through the latest editor because export configuration remains editor-owned in this patch.
 - Templates are explicitly preview-only and Profile explicitly reports that it is not implemented; do not present these as completed product features until their real data/actions exist.
 - Home redesign changes no project schema, renderer behavior or export recovery fingerprint.
+
+## Editor UI overhaul (Patch 28C)
+- Editor layout is now structured as top bar → preview → transport → timeline stage → tool dock → context drawer.
+- The old full-page vertical control dump is removed. Advanced controls still exist, but only the active category is exposed in the context drawer.
+- Main video timeline stays visible. Text/Audio/Effects/Overlay/Captions share one contextual auxiliary timeline lane selected by the tool dock.
+- Tool modes are UI-only state and do not change project schema, canonical timing, preview math or export behavior.
+- Text/overlay/caption taps in preview automatically reveal the matching tool mode.
+- Semantic accents remain category-owned rather than forcing all editor controls into one brand color.
 
 ## Product quality rules
 - Engine correctness before feature count.
@@ -271,6 +279,6 @@ Important modules:
 - Patch 27 does not change render semantics, project JSON or export fingerprint: schema remains v20 and recovery salt remains `vedito-render-p26-r1`.
 
 ## Next milestone
-**Patch 28C — Editor UI Overhaul** following the approved mockup direction, unless device testing exposes a Patch 28B regression first.
+**Patch 28D — Export UI Overhaul** following the approved mockup direction, unless device testing exposes a Patch 28C regression first.
 
 See `WORKPLAN.md` for the full roadmap.

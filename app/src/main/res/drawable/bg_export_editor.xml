@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <gradient android:angle="0" android:startColor="@color/vedito_brand_cyan_pressed" android:endColor="@color/vedito_brand_blue_pressed" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="0" android:startColor="@color/vedito_brand_cyan" android:centerColor="@color/vedito_brand_blue" android:endColor="@color/vedito_brand_indigo" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</selector>

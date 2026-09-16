@@ -2,6 +2,7 @@ package com.vedito.app.feature.editor
 
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
+import android.content.res.ColorStateList
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -113,6 +114,16 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
+    private enum class EditorToolMode {
+        EDIT,
+        SPEED,
+        TEXT,
+        AUDIO,
+        EFFECTS,
+        COLOR,
+        LAYERS,
+        CAPTIONS
+    }
     private lateinit var binding: ActivityEditorBinding
     private lateinit var repository: ProjectRepository
     private lateinit var previewPlayer: PreviewPlayer
@@ -169,6 +180,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var exportProgressLabel: TextView? = null
     private var exportReceiverRegistered = false
     private var lastHandledExportTerminalAt = 0L
+    private var editorToolMode = EditorToolMode.EDIT
 
     private val exportStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -281,6 +293,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.projectTitle.text = project.title
         binding.backButton.setOnClickListener { finish() }
         binding.exportVideoButton.setOnClickListener { showExportOptions() }
+        binding.toolEditButton.setOnClickListener { setEditorToolMode(EditorToolMode.EDIT) }
+        binding.toolSpeedButton.setOnClickListener { setEditorToolMode(EditorToolMode.SPEED) }
+        binding.toolTextButton.setOnClickListener { setEditorToolMode(EditorToolMode.TEXT) }
+        binding.toolAudioButton.setOnClickListener { setEditorToolMode(EditorToolMode.AUDIO) }
+        binding.toolEffectsButton.setOnClickListener { setEditorToolMode(EditorToolMode.EFFECTS) }
+        binding.toolColorButton.setOnClickListener { setEditorToolMode(EditorToolMode.COLOR) }
+        binding.toolLayersButton.setOnClickListener { setEditorToolMode(EditorToolMode.LAYERS) }
+        binding.toolCaptionsButton.setOnClickListener { setEditorToolMode(EditorToolMode.CAPTIONS) }
+        setEditorToolMode(EditorToolMode.EDIT)
         binding.playPauseButton.setOnClickListener {
             if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
         }
@@ -529,6 +550,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         previewPlayer = PreviewPlayer(this, binding.previewTexture, this)
         overlayPreview = OverlayPreviewController(this, binding.overlayPreviewLayer)
         overlayPreview.onOverlaySelected = { id ->
+            setEditorToolMode(EditorToolMode.LAYERS)
             selectedOverlayClipId = id
             selectedTextClipId = null
             selectedCaptionSegmentId = null
@@ -545,6 +567,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         textPreview = TextPreviewController(this, binding.textPreviewLayer)
         textPreview.onTextSelected = { id ->
+            setEditorToolMode(EditorToolMode.TEXT)
             selectedTextClipId = id
             selectedOverlayClipId = null
             selectedCaptionSegmentId = null
@@ -564,6 +587,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         captionPreview = CaptionPreviewController(this, binding.captionPreviewLayer)
         captionPreview.onCaptionSelected = { id ->
+            setEditorToolMode(EditorToolMode.CAPTIONS)
             selectedCaptionSegmentId = id
             selectedTextClipId = null
             selectedOverlayClipId = null
@@ -2139,6 +2163,79 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updateVisualToolbar()
             updateMaskChromaToolbar()
         }
+    }
+
+    private fun setEditorToolMode(mode: EditorToolMode) {
+        editorToolMode = mode
+
+        val panels = listOf(
+            binding.editToolsPanel,
+            binding.speedToolsPanel,
+            binding.textToolsPanel,
+            binding.audioToolsPanel,
+            binding.effectsToolsPanel,
+            binding.colorToolsPanel,
+            binding.layersToolsPanel,
+            binding.captionsToolsPanel
+        )
+        panels.forEach { it.visibility = View.GONE }
+
+        val activePanel = when (mode) {
+            EditorToolMode.EDIT -> binding.editToolsPanel
+            EditorToolMode.SPEED -> binding.speedToolsPanel
+            EditorToolMode.TEXT -> binding.textToolsPanel
+            EditorToolMode.AUDIO -> binding.audioToolsPanel
+            EditorToolMode.EFFECTS -> binding.effectsToolsPanel
+            EditorToolMode.COLOR -> binding.colorToolsPanel
+            EditorToolMode.LAYERS -> binding.layersToolsPanel
+            EditorToolMode.CAPTIONS -> binding.captionsToolsPanel
+        }
+        activePanel.visibility = View.VISIBLE
+
+        binding.audioTimeline.visibility = if (mode == EditorToolMode.AUDIO) View.VISIBLE else View.GONE
+        binding.overlayTimeline.visibility = if (mode == EditorToolMode.LAYERS) View.VISIBLE else View.GONE
+        binding.textTimeline.visibility = if (mode == EditorToolMode.TEXT) View.VISIBLE else View.GONE
+        binding.captionTimeline.visibility = if (mode == EditorToolMode.CAPTIONS) View.VISIBLE else View.GONE
+        binding.effectTimeline.visibility = if (mode == EditorToolMode.EFFECTS) View.VISIBLE else View.GONE
+
+        val modeButtons = listOf(
+            EditorToolMode.EDIT to binding.toolEditButton,
+            EditorToolMode.SPEED to binding.toolSpeedButton,
+            EditorToolMode.TEXT to binding.toolTextButton,
+            EditorToolMode.AUDIO to binding.toolAudioButton,
+            EditorToolMode.EFFECTS to binding.toolEffectsButton,
+            EditorToolMode.COLOR to binding.toolColorButton,
+            EditorToolMode.LAYERS to binding.toolLayersButton,
+            EditorToolMode.CAPTIONS to binding.toolCaptionsButton
+        )
+
+        val activeColor = when (mode) {
+            EditorToolMode.TEXT, EditorToolMode.CAPTIONS -> ContextCompat.getColor(this, R.color.vedito_text_track)
+            EditorToolMode.AUDIO -> ContextCompat.getColor(this, R.color.vedito_audio)
+            EditorToolMode.EFFECTS -> ContextCompat.getColor(this, R.color.vedito_effect)
+            EditorToolMode.LAYERS -> ContextCompat.getColor(this, R.color.vedito_video)
+            else -> ContextCompat.getColor(this, R.color.vedito_brand_cyan)
+        }
+        val idleColor = ContextCompat.getColor(this, R.color.vedito_text_secondary)
+
+        modeButtons.forEach { (buttonMode, button) ->
+            val selected = buttonMode == mode
+            val color = if (selected) activeColor else idleColor
+            button.setBackgroundResource(if (selected) R.drawable.bg_editor_tool_mode_selected else R.drawable.bg_editor_tool_mode)
+            button.setTextColor(color)
+            button.compoundDrawableTintList = ColorStateList.valueOf(color)
+        }
+
+        val track = when (mode) {
+            EditorToolMode.TEXT -> "TEXT" to R.color.vedito_text_track
+            EditorToolMode.AUDIO -> "AUDIO" to R.color.vedito_audio
+            EditorToolMode.EFFECTS -> "EFFECTS" to R.color.vedito_effect
+            EditorToolMode.LAYERS -> "OVERLAY" to R.color.vedito_video
+            EditorToolMode.CAPTIONS -> "CAPTIONS" to R.color.vedito_text_track
+            else -> "VIDEO" to R.color.vedito_video
+        }
+        binding.activeTrackLabel.text = track.first
+        binding.activeTrackLabel.setTextColor(ContextCompat.getColor(this, track.second))
     }
 
     private fun updateTimecodeUi() {
