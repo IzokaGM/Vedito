@@ -2,13 +2,21 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/vedito_accent_pressed" />
+            <gradient
+                android:angle="0"
+                android:startColor="@color/vedito_brand_cyan_pressed"
+                android:centerColor="@color/vedito_brand_blue_pressed"
+                android:endColor="@color/vedito_brand_indigo_pressed" />
             <corners android:radius="18dp" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="@color/vedito_accent" />
+            <gradient
+                android:angle="0"
+                android:startColor="@color/vedito_brand_cyan"
+                android:centerColor="@color/vedito_brand_blue"
+                android:endColor="@color/vedito_brand_indigo" />
             <corners android:radius="18dp" />
         </shape>
     </item>

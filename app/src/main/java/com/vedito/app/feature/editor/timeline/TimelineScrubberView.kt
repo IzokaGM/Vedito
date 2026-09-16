@@ -57,14 +57,14 @@ class TimelineScrubberView @JvmOverloads constructor(
         strokeWidth = 2f * density
     }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.getColor(R.color.vedito_accent)
+        color = context.getColor(R.color.vedito_video)
         style = Paint.Style.STROKE
         strokeWidth = 2f * density
     }
-    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_accent) }
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_video) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text) }
     private val snapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.getColor(R.color.vedito_accent)
+        color = context.getColor(R.color.vedito_video)
         alpha = 125
         strokeWidth = density
     }

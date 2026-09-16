@@ -2,7 +2,7 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="#1C1F29" />
+            <solid android:color="@color/vedito_surface_pressed" />
             <stroke android:width="1dp" android:color="@color/vedito_stroke" />
             <corners android:radius="18dp" />
         </shape>

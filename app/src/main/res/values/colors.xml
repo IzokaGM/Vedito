@@ -1,13 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="vedito_bg">#090A0F</color>
-    <color name="vedito_surface">#11131A</color>
-    <color name="vedito_surface_raised">#171A23</color>
-    <color name="vedito_stroke">#282C39</color>
-    <color name="vedito_text">#F7F7FA</color>
-    <color name="vedito_muted">#949AA8</color>
-    <color name="vedito_accent">#8D7BFF</color>
-    <color name="vedito_accent_pressed">#7462E8</color>
+    <!-- Vedito brand foundation: dark premium base + functional multi-accent system. -->
+    <color name="vedito_bg">#07090E</color>
+    <color name="vedito_bg_deep">#03050A</color>
+    <color name="vedito_surface">#0E121A</color>
+    <color name="vedito_surface_raised">#151B26</color>
+    <color name="vedito_surface_pressed">#1B2330</color>
+    <color name="vedito_stroke">#263142</color>
+    <color name="vedito_stroke_soft">#1A2230</color>
+
+    <color name="vedito_text">#F6F8FC</color>
+    <color name="vedito_text_secondary">#C4CBD7</color>
+    <color name="vedito_muted">#8C96A8</color>
+    <color name="vedito_disabled">#596274</color>
+
+    <!-- Brand signature. Cyan/blue lead; indigo is only the gradient tail. -->
+    <color name="vedito_brand_cyan">#16D9F2</color>
+    <color name="vedito_brand_blue">#3184FF</color>
+    <color name="vedito_brand_indigo">#6657F7</color>
+    <color name="vedito_brand_cyan_pressed">#0FC0D8</color>
+    <color name="vedito_brand_blue_pressed">#286EE4</color>
+    <color name="vedito_brand_indigo_pressed">#5548D8</color>
+
+    <!-- Compatibility alias for older views. New code should prefer semantic tokens. -->
+    <color name="vedito_accent">@color/vedito_brand_cyan</color>
+    <color name="vedito_accent_pressed">@color/vedito_brand_cyan_pressed</color>
+
+    <!-- Functional accents from the approved multi-accent mockup direction. -->
+    <color name="vedito_video">#3997FF</color>
+    <color name="vedito_video_selected">#B8DCFF</color>
+    <color name="vedito_text_track">#B86CFF</color>
+    <color name="vedito_text_selected">#E7D2FF</color>
+    <color name="vedito_audio">#27DFA0</color>
+    <color name="vedito_audio_deep">#12664F</color>
+    <color name="vedito_audio_selected">#A9F4D9</color>
+    <color name="vedito_effect">#F5B84B</color>
+    <color name="vedito_effect_selected">#FFE1A6</color>
+    <color name="vedito_export">#1BD5ED</color>
+    <color name="vedito_success">#33D69F</color>
+    <color name="vedito_warning">#FFB54A</color>
+    <color name="vedito_error">#FF667A</color>
+
     <color name="vedito_black">#000000</color>
     <color name="vedito_white">#FFFFFF</color>
 </resources>

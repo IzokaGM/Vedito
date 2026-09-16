@@ -22,7 +22,7 @@ class OverlayTimelineView @JvmOverloads constructor(
     var onOverlayEditStart: ((String) -> Unit)? = null
     var onOverlayChanged: ((OverlayClip, Boolean) -> Unit)? = null
 
-    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_accent) }
+    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_video) }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE9E5FF.toInt() }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF16131F.toInt(); textSize = sp(9f) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = dp(1.5f) }

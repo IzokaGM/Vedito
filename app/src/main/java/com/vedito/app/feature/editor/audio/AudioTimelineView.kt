@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import com.vedito.app.R
 import com.vedito.app.core.model.AudioClip
 import kotlin.math.abs
 import kotlin.math.max
@@ -24,12 +25,12 @@ class AudioTimelineView @JvmOverloads constructor(
     private enum class GestureMode { MOVE, TRIM_LEFT, TRIM_RIGHT }
 
     private val density = resources.displayMetrics.density
-    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF11131A.toInt() }
-    private val clipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF4B407E.toInt() }
-    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF7666E8.toInt() }
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_surface) }
+    private val clipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_audio_deep) }
+    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_audio) }
     private val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF30333E.toInt() }
     private val waveformPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFD7D2FF.toInt()
+        color = context.getColor(R.color.vedito_audio_selected)
         strokeWidth = 1f * density
         alpha = 205
     }
@@ -46,11 +47,11 @@ class AudioTimelineView @JvmOverloads constructor(
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFF7F7FA.toInt()
+        color = context.getColor(R.color.vedito_text)
         strokeWidth = 1.5f * density
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFF7F7FA.toInt()
+        color = context.getColor(R.color.vedito_text)
         textSize = 9f * resources.displayMetrics.scaledDensity
     }
 

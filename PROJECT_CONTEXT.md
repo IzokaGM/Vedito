@@ -1,6 +1,6 @@
 # Vedito — Canonical Project Context
 
-> Read this file first before changing Vedito. It is the canonical handoff for another AI/developer.
+> Read this file first before changing Vedito. It is the canonical handoff for another AI/developer. For visual/UI work, also read `BRAND.md`.
 
 ## Product goal
 Vedito is a premium native Android video editor targeting CapCut-class breadth, reliability and performance over iterative releases. It must have its own identity and must not copy CapCut/Cutrim proprietary source/assets.
@@ -9,7 +9,11 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.27.0 / versionCode 27**
+- Current patch: **0.28.0 / versionCode 28**
+- Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
+- Approved tagline: **Shape the cut.**
+- Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
+- Signature brand motion/color may use cyan → electric blue → indigo as a gradient, while editor categories keep semantic accents (video blue, text purple, audio green, effects amber, export cyan).
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -32,6 +36,13 @@ Owner works mainly from phone/GitHub Actions.
 Current external CI concept:
 - `.github/workflows/01-auto-unzip.yml`: unzip uploaded patch ZIP + commit.
 - `.github/workflows/02-build-apk.yml`: build after successful unzip workflow.
+
+## Branding foundation (Patch 28A)
+- Resource-driven brand tokens live in `res/values/colors.xml`, `dimens.xml` and `styles.xml`.
+- `vedito_brand_mark.png` is the approved icon-only production asset used by Home, launcher and splash.
+- Android 12+ splash uses the Vedito adaptive launcher icon on the deep-dark brand background.
+- Legacy `vedito_accent` remains only as a compatibility alias to brand cyan; new UI should use semantic brand/function tokens.
+- This patch intentionally establishes branding, not the full Home/Editor/Export redesign.
 
 ## Product quality rules
 - Engine correctness before feature count.

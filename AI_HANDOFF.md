@@ -1,10 +1,10 @@
 # Vedito AI Handoff
 
-Read `PROJECT_CONTEXT.md` first, then `WORKPLAN.md`.
+Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.27.0 / versionCode 27 / project schema v20**.
+- Current patch: **0.28.0 / versionCode 28 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -24,4 +24,6 @@ Patch 27 moves long export ownership into `ExportForegroundService`. Android 15+
 
 Important limits: no WorkManager/vendor-specific fallback yet; no voice-over capture, NR/voice enhancement, pitch tools or beat detection; no auto captions/TTS/karaoke; text style/font/color/animation parameters are not keyframed yet.
 
-Next planned milestone: **Patch 28 — Capture / Voice-over Foundation** unless CI/device testing exposes a Patch 27 regression first.
+Patch 28A locks the Vedito brand direction before the UI overhaul: V + play + cut-frame logo, `Shape the cut.` tagline, dark premium base, cyan/blue signature gradient and functional multi-accent category colors. The generated presentation board is reference only; app resources use the isolated production mark.
+
+Next planned milestone: **Patch 28B — Home UI Overhaul**, followed by Editor and Export UI overhaul, unless CI/device testing exposes a branding regression first.

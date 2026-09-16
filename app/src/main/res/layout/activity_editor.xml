@@ -64,7 +64,7 @@
             android:paddingEnd="11dp"
             android:paddingBottom="7dp"
             android:text="EXPORT"
-            android:textColor="@color/vedito_accent"
+            android:textColor="@color/vedito_export"
             android:textSize="10sp" />
     </LinearLayout>
 
@@ -651,7 +651,7 @@
                 android:layout_weight="1"
                 android:fontFamily="sans-serif-medium"
                 android:text="1.0×"
-                android:textColor="@color/vedito_accent"
+                android:textColor="@color/vedito_brand_cyan"
                 android:textSize="11sp" />
 
             <TextView

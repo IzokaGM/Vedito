@@ -1,12 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Vedito" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.Vedito.Base" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:statusBarColor">@color/vedito_bg</item>
-        <item name="android:navigationBarColor">@color/vedito_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:colorAccent">@color/vedito_accent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">@color/vedito_brand_cyan</item>
+        <item name="android:windowBackground">@color/vedito_bg</item>
+    </style>
+
+    <style name="Theme.Vedito" parent="Theme.Vedito.Base" />
+
+    <style name="TextAppearance.Vedito" parent="@android:style/TextAppearance.Material" />
+
+    <style name="TextAppearance.Vedito.Display">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/vedito_text</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Vedito.Title">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/vedito_text</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Vedito.Body">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColor">@color/vedito_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="TextAppearance.Vedito.Meta">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColor">@color/vedito_muted</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Widget.Vedito" parent="@android:style/Widget.Material.Button.Borderless" />
+
+    <style name="Widget.Vedito.PrimaryButton">
+        <item name="android:background">@drawable/bg_primary_button</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/vedito_white</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="Widget.Vedito.ToolButton">
+        <item name="android:background">@drawable/bg_tool_button</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/vedito_text</item>
+        <item name="android:textSize">11sp</item>
     </style>
 </resources>

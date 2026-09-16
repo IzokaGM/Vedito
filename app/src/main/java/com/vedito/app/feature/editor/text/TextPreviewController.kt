@@ -105,7 +105,7 @@ class TextPreviewController(
 
     private fun selectionDrawable() = GradientDrawable().apply {
         setColor(0x00000000)
-        setStroke(dp(2), context.getColor(R.color.vedito_accent))
+        setStroke(dp(2), context.getColor(R.color.vedito_text_track))
         cornerRadius = dp(6).toFloat()
     }
 

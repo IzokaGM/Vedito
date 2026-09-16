@@ -250,12 +250,18 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Independent audio role/pan/music-ducking controls with preview/export parity.
   - Text transform keyframes with shared easing, navigation, trim-safe remap and preview/export parity.
   - Schema v20 + `vedito-render-p26-r1` recovery invalidation.
-- **Patch 27:** Foreground Export / Release Hardening Foundation — current patch.
+- **Patch 27:** Foreground Export / Release Hardening Foundation — locked after CI/device verification.
   - Foreground service owns long export across Activity background/recreation.
   - Android 15+ mediaProcessing + Android 14 compatibility dataSync service typing and permissions.
   - Persistent task/progress state, notification Cancel/deep-link, process redelivery and checkpoint resume.
   - Android timeout/start-failure hardening; schema v20 and render salt unchanged.
-- **Patch 28+:** capture/voice-over, then AI/templates/cloud.
+- **Patch 28A:** Vedito Branding Foundation — current patch.
+  - Locks V + play + cut-frame mark and `Shape the cut.` tagline.
+  - Adds dark premium brand surfaces, cyan/blue signature gradient, and functional multi-accent semantic tokens.
+  - Applies production mark to Home, adaptive launcher and Android 12+ splash.
+  - Adds reusable typography/control styles and system-bar polish; project schema/render semantics remain v20 / `vedito-render-p26-r1`.
+- **Patch 28B–28D:** Home, Editor and Export UI/UX overhaul following the approved mockup direction.
+- **Patch 29+:** capture/voice-over, then AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

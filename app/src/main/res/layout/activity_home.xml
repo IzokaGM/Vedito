@@ -21,9 +21,17 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <ImageView
+                android:layout_width="54dp"
+                android:layout_height="54dp"
+                android:contentDescription="@string/app_name"
+                android:scaleType="fitCenter"
+                android:src="@drawable/vedito_brand_mark" />
+
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
@@ -32,18 +40,18 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif-medium"
                     android:includeFontPadding="false"
-                    android:text="Vedito"
+                    android:text="@string/app_name"
                     android:textColor="@color/vedito_text"
-                    android:textSize="34sp" />
+                    android:textSize="30sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp"
+                    android:layout_marginTop="3dp"
                     android:includeFontPadding="false"
                     android:text="@string/home_tagline"
                     android:textColor="@color/vedito_muted"
-                    android:textSize="16sp" />
+                    android:textSize="14sp" />
             </LinearLayout>
 
             <TextView
@@ -55,7 +63,7 @@
                 android:paddingTop="7dp"
                 android:paddingEnd="11dp"
                 android:paddingBottom="7dp"
-                android:text="0.3"
+                android:text="0.28"
                 android:textColor="@color/vedito_muted"
                 android:textSize="12sp" />
         </LinearLayout>
@@ -112,7 +120,7 @@
                     android:fontFamily="sans-serif-medium"
                     android:includeFontPadding="false"
                     android:text="@string/new_edit"
-                    android:textColor="@color/vedito_bg"
+                    android:textColor="@color/vedito_white"
                     android:textSize="16sp" />
             </LinearLayout>
         </LinearLayout>

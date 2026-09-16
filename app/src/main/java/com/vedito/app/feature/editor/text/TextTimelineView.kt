@@ -22,12 +22,12 @@ class TextTimelineView @JvmOverloads constructor(
     var onTextEditStart: ((String) -> Unit)? = null
     var onTextChanged: ((TextClip, Boolean) -> Unit)? = null
 
-    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB79CFF.toInt() }
-    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF3EDFF.toInt() }
+    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text_track) }
+    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text_selected) }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF17131F.toInt(); textSize = sp(9f) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = dp(1.5f) }
     private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); alpha = 220 }
-    private val keyframePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF5A47D8.toInt() }
+    private val keyframePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_brand_indigo) }
 
     private var clips: List<TextClip> = emptyList()
     private var selectedId: String? = null

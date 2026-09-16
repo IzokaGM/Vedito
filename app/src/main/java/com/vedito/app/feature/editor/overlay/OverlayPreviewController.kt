@@ -223,7 +223,7 @@ class OverlayPreviewController(
 
     private fun selectionDrawable() = GradientDrawable().apply {
         setColor(0x00000000)
-        setStroke(dp(2f).roundToInt(), context.getColor(R.color.vedito_accent))
+        setStroke(dp(2f).roundToInt(), context.getColor(R.color.vedito_video))
     }
 
     private fun removeNode(id: String) {

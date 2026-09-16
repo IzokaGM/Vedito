@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import com.vedito.app.R
 import com.vedito.app.core.effect.EffectTimelineEditor
 import com.vedito.app.core.model.EffectClip
 import kotlin.math.abs
@@ -20,9 +21,9 @@ class EffectTimelineView @JvmOverloads constructor(
     var onEffectEditStart: ((String) -> Unit)? = null
     var onEffectChanged: ((EffectClip, Boolean) -> Unit)? = null
 
-    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB693FF.toInt() }
-    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE1D2FF.toInt() }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF21163B.toInt(); textSize = sp(9f) }
+    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_effect) }
+    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_effect_selected) }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_bg_deep); textSize = sp(9f) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = dp(1.5f) }
     private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); alpha = 220 }
 

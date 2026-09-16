@@ -1,6 +1,12 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#8D7BFF" android:pathData="M18,18h72v72H18z" />
-    <path android:fillColor="#090A0F" android:pathData="M34,32h10l10,26 10,-26h10L58,76h-8z" />
-    <path android:fillColor="#F7F7FA" android:pathData="M63,51l14,9 -14,9z" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:left="20dp"
+        android:top="20dp"
+        android:right="20dp"
+        android:bottom="20dp">
+        <bitmap
+            android:src="@drawable/vedito_brand_mark"
+            android:gravity="fill" />
+    </item>
+</layer-list>
