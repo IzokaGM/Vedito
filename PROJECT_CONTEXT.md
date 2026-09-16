@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.26.0 / versionCode 26**
+- Current patch: **0.27.0 / versionCode 27**
 
 ## Locked technical direction
 - Native Android/Kotlin; do not return to React Native unless owner explicitly changes direction.
@@ -129,6 +129,7 @@ Important modules:
 - Patch 24: frame-boundary video checkpoints, resumable cache-backed export sessions, single full-length AAC checkpoint, no-reencode final remux, resume-aware storage preflight, thermal checkpoint backoff and per-segment decoder/GPU reacquisition.
 - Patch 25: schema v19 advanced color state with five-anchor RGB curves, global HSL, built-in LUT looks/intensity, API 33+ unified RuntimeShader preview, GLES export parity, CPU fallback parity and recovery fingerprint invalidation.
 - Patch 26: schema v20 audio role/pan/voice-priority ducking for independent audio tracks plus text transform keyframes with shared easing, trim-safe timing, preview/export parity and recovery fingerprint invalidation.
+- Patch 27: foreground export service + persistent task reconnect, notification cancel/progress, process/lifecycle resume and Android timeout-safe checkpoint preservation; schema remains v20.
 
 ## Patch 15 behavior/limits
 - Main video clips and overlay/PIP clips can animate scale, position X/Y, rotation and opacity with local-timeline keyframes.
@@ -145,10 +146,10 @@ Important modules:
 - Freeze duration UI beyond default insertion.
 - Voice-over recording, NR/voice enhancement, pitch/voice effects, beat detection/markers and studio-grade time stretch remain pending. Patch 26 adds deterministic role-based music ducking for independent audio tracks.
 - Auto captions, per-word/karaoke timing, TTS, custom downloaded font packs and keyframed text style/animation parameters remain pending. Patch 26 adds transform keyframes for text.
-- Final GPU shader/color-grading engine, LUT/HSL/curves and dual-source cross-dissolve.
+- Manual graph curve editor, color wheels, selective/per-band HSL, external `.cube` LUT import and dual-source cross-dissolve remain pending; Patch 25 already provides canonical curves/global HSL/built-in LUT preview-export parity.
 - Overlay/PIP mask/chroma application, advanced/freeform masks and mask keyframes. Main-clip rectangle/ellipse masks + chroma foundation exist in Patch 16.
 - Automatic detector/optical-flow tracking, overlay attachment tracking and production gyro/flow stabilization. Manual main-clip tracking/stabilization foundation exists in Patch 17.
-- Zero-copy OES/SurfaceTexture decoder-to-GPU path remains pending. Patch 24 now provides cache-backed export recovery/resume, but export is not yet a persistent foreground/WorkManager job and Android may clear cached checkpoints.
+- Zero-copy OES/SurfaceTexture decoder-to-GPU path remains pending. Patch 27 now owns export in a foreground service; WorkManager/vendor-specific fallback is still pending and Android may still clear cached checkpoints.
 - AI/templates/cloud/account/subscription.
 
 ## Patch 17 behavior/limits
@@ -217,7 +218,7 @@ Important modules:
 - Audio is mixed/encoded once for the full project. Final delivery is a no-reencode `Mp4SegmentMerger` remux, avoiding AAC priming at each video boundary.
 - Storage preflight includes cache working budget, resume-aware reusable bytes and measurable destination free space; destination is checked again before final assembly.
 - Severe thermal state backs off at safe segment boundaries; critical thermal pressure exits with completed checkpoints preserved.
-- Recovery cache is not durable storage and may be cleared by Android. Export is not yet a foreground service/WorkManager job, so process death loses the active segment but finalized checkpoints can be reused.
+- Recovery cache is not durable storage and may be cleared by Android. Patch 27 later adds foreground-service ownership and process redelivery; an abrupt kill can still lose only the in-flight `.part` segment while finalized checkpoints remain reusable.
 - Project schema remains v18; Patch 24 adds no saved editor state.
 
 ## Patch 25 behavior/limits
@@ -240,7 +241,17 @@ Important modules:
 - Export recovery render salt is `vedito-render-p26-r1`, invalidating Patch 25 checkpoints after audio/text render semantics changed.
 - Patch 26 does not add voice-over recording, NR/voice enhancement, pitch shifting, beat detection, auto captions, karaoke/per-word captions, TTS, custom font downloads or keyframed text style properties.
 
+## Patch 27 behavior/limits
+- `ExportForegroundService` owns long exports; closing/recreating `EditorActivity` no longer cancels the render.
+- Android 15+ foreground execution uses `mediaProcessing`; API 29–34 uses `dataSync` for compatible local file processing/export. Manifest declares the matching foreground-service permissions.
+- `ExportTaskStore` persists one active task's project id, output URI, export settings, progress and terminal state so editor UI can reconnect after lifecycle/process events.
+- `START_REDELIVER_INTENT` lets Android recreate the service with the export request. `VideoExportEngine` then reopens the Patch 24 recovery fingerprint and reuses finalized video/AAC checkpoints.
+- Notification progress has Cancel and deep-links back to the owning project. Terminal completion/failure/cancel/timeout remains visible after the foreground service detaches.
+- Android 15+ `onTimeout(startId, fgsType)` cancels in-flight codec work, preserves finalized checkpoints, records a resumable timeout state and stops promptly to avoid ANR.
+- Export no longer holds `keepScreenOn`; screen-off/background execution is expected. Force-stop, cache eviction, revoked SAF permission or OS/vendor kill can still interrupt work; finalized checkpoints remain best-effort cache state only.
+- Patch 27 does not change render semantics, project JSON or export fingerprint: schema remains v20 and recovery salt remains `vedito-render-p26-r1`.
+
 ## Next milestone
-**Patch 27 — Foreground Export / Release Hardening Foundation**
+**Patch 28 — Capture / Voice-over Foundation** unless device testing exposes a Patch 27 regression first.
 
 See `WORKPLAN.md` for the full roadmap.

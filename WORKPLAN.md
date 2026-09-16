@@ -101,8 +101,8 @@ Pending:
 - Effect parameter keyframes and downloadable effect packs.
 
 ## Stage 7 — Production render/export engine
-**In progress — Patch 26 extends canonical audio/text render state while retaining Patch 24 recovery.**
-Completed through Patch 26:
+**In progress — Patch 27 adds foreground/lifecycle-safe export ownership while retaining canonical Patch 24–26 render state.**
+Completed through Patch 27:
 - Deterministic off-screen compositor consuming canonical project state, now split into reusable base/overlay planes.
 - Real H.264 + audible stereo AAC/MP4 output.
 - 720p/1080p/1440p/2160p output profiles at 24/30/60fps with AVC/HEVC hardware-first encoder selection and safe bitrate planning.
@@ -129,7 +129,7 @@ Completed through Patch 26:
 
 Pending:
 - Zero-copy OES/SurfaceTexture decoder-to-GPU source path and broader GPU overlay graph.
-- Persistent foreground/WorkManager export execution across aggressive process/background lifecycle events.
+- WorkManager/user-initiated-job fallback strategy for vendor-specific foreground-service limits beyond the Patch 27 service path.
 - Arbitrary/manual bitrate controls beyond the safe Patch 22 planner.
 - Studio-grade time stretch/pitch tools, voice-over capture, NR/voice enhancement and voice effects.
 
@@ -246,11 +246,16 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Five-anchor Master/R/G/B curves, global HSL and built-in LUT look/intensity state.
   - Unified API 33+ preview shader + GLES export + CPU fallback parity.
   - Schema v19 persistence and Patch 24 recovery fingerprint invalidation.
-- **Patch 26:** Advanced Audio / Text Expansion Foundation — current patch.
+- **Patch 26:** Advanced Audio / Text Expansion Foundation — locked after CI/device verification.
   - Independent audio role/pan/music-ducking controls with preview/export parity.
   - Text transform keyframes with shared easing, navigation, trim-safe remap and preview/export parity.
   - Schema v20 + `vedito-render-p26-r1` recovery invalidation.
-- **Patch 27+:** foreground export/release hardening, then advanced capture/AI/templates/cloud.
+- **Patch 27:** Foreground Export / Release Hardening Foundation — current patch.
+  - Foreground service owns long export across Activity background/recreation.
+  - Android 15+ mediaProcessing + Android 14 compatibility dataSync service typing and permissions.
+  - Persistent task/progress state, notification Cancel/deep-link, process redelivery and checkpoint resume.
+  - Android timeout/start-failure hardening; schema v20 and render salt unchanged.
+- **Patch 28+:** capture/voice-over, then AI/templates/cloud.
 
 ## Release gates
 Before locking a major stage:

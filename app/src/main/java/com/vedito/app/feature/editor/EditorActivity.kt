@@ -1,7 +1,10 @@
 package com.vedito.app.feature.editor
 
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -18,6 +21,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.vedito.app.R
 import com.vedito.app.core.audio.AudioPlaybackEngine
 import com.vedito.app.core.audio.AudioProbe
@@ -88,6 +92,8 @@ import com.vedito.app.core.visual.VisualTransformMath
 import com.vedito.app.databinding.ActivityEditorBinding
 import com.vedito.app.feature.editor.player.PreviewPlayer
 import com.vedito.app.feature.export.ExportCapabilityProbe
+import com.vedito.app.feature.export.ExportForegroundService
+import com.vedito.app.feature.export.ExportTaskStore
 import com.vedito.app.feature.export.VideoExportEngine
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.color.ColorGradeToolbarView
@@ -119,6 +125,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private lateinit var textPreview: TextPreviewController
     private lateinit var captionPreview: CaptionPreviewController
     private lateinit var exportEngine: VideoExportEngine
+    private lateinit var exportTaskStore: ExportTaskStore
     private lateinit var project: Project
 
     private val history = EditorHistory(HISTORY_LIMIT)
@@ -160,6 +167,16 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var exportDialog: AlertDialog? = null
     private var exportProgressBar: ProgressBar? = null
     private var exportProgressLabel: TextView? = null
+    private var exportReceiverRegistered = false
+    private var lastHandledExportTerminalAt = 0L
+
+    private val exportStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ExportForegroundService.ACTION_STATUS_CHANGED) {
+                syncExportUiFromStore()
+            }
+        }
+    }
 
     private val addVideoPicker = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_ADDED_VIDEOS)
@@ -229,6 +246,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         audioPlayback = AudioPlaybackEngine(this)
         audioWaveformCache = AudioWaveformCache(this)
         exportEngine = VideoExportEngine(this)
+        exportTaskStore = ExportTaskStore(this)
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)
         val loaded = projectId?.let(repository::find)
@@ -568,6 +586,28 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         requestThumbnails()
         requestAudioWaveforms()
         probeKnownAssets()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!exportReceiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                exportStatusReceiver,
+                IntentFilter(ExportForegroundService.ACTION_STATUS_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            exportReceiverRegistered = true
+        }
+        syncExportUiFromStore()
+    }
+
+    override fun onStop() {
+        if (exportReceiverRegistered) {
+            unregisterReceiver(exportStatusReceiver)
+            exportReceiverRegistered = false
+        }
+        super.onStop()
     }
 
     override fun onPause() {
@@ -3326,8 +3366,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun showExportOptions() {
-        if (::exportEngine.isInitialized && exportEngine.isRunning()) {
-            Toast.makeText(this, "Export already running", Toast.LENGTH_SHORT).show()
+        val activeExport = if (::exportTaskStore.isInitialized) exportTaskStore.read() else null
+        if (activeExport?.state?.isActive == true) {
+            if (activeExport.projectId == project.id) {
+                showExportProgressDialog(activeExport.progress, activeExport.message)
+            } else {
+                Toast.makeText(this, "Another Vedito export is already running", Toast.LENGTH_LONG).show()
+            }
             return
         }
         saveProject()
@@ -3447,59 +3492,47 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         saveProject()
         previewPlayer.pause()
         audioPlayback.pause()
-        showExportProgressDialog()
-        binding.exportVideoButton.isEnabled = false
-        binding.exportVideoButton.alpha = 0.45f
-        binding.root.keepScreenOn = true
 
-        val started = exportEngine.export(project, uri, settings, object : VideoExportEngine.Listener {
-            override fun onProgress(percent: Int, message: String) {
-                if (isFinishing || isDestroyed) return
-                exportProgressBar?.progress = percent
-                exportProgressLabel?.text = "$message · $percent%"
+        val existing = exportTaskStore.read()
+        if (existing?.state?.isActive == true) {
+            if (existing.projectId == project.id) {
+                showExportProgressDialog(existing.progress, existing.message)
+            } else {
+                Toast.makeText(this, "Another Vedito export is already running", Toast.LENGTH_LONG).show()
             }
+            return
+        }
 
-            override fun onCompleted(uri: Uri, plan: com.vedito.app.core.export.ExportPlan, elapsedMs: Long) {
-                if (isFinishing || isDestroyed) return
-                finishExportUi()
-                val seconds = (elapsedMs / 1_000f).coerceAtLeast(0f)
-                AlertDialog.Builder(this@EditorActivity)
-                    .setTitle("Export complete")
-                    .setMessage("${plan.width}×${plan.height} · ${plan.frameRate} fps · ${plan.videoCodec.label.substringBefore('·').trim()} · ${String.format("%.1f", seconds)}s render time")
-                    .setNegativeButton("Done", null)
-                    .setPositiveButton("Open") { _, _ ->
-                        val intent = Intent(Intent.ACTION_VIEW)
-                            .setDataAndType(uri, "video/mp4")
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        runCatching { startActivity(intent) }
-                            .onFailure { Toast.makeText(this@EditorActivity, "Video saved", Toast.LENGTH_SHORT).show() }
-                    }
-                    .show()
+        val started = runCatching {
+            ExportForegroundService.startExport(
+                context = this,
+                projectId = project.id,
+                projectTitle = project.title,
+                outputUri = uri,
+                settings = settings
+            )
+        }
+        if (started.isSuccess) {
+            showExportProgressDialog(0, "Preparing foreground export")
+            binding.exportVideoButton.isEnabled = false
+            binding.exportVideoButton.alpha = 0.45f
+        } else {
+            val message = started.exceptionOrNull()?.message ?: "Unable to start foreground export"
+            exportTaskStore.read()?.let { current ->
+                if (current.projectId == project.id && current.state.isActive) {
+                    exportTaskStore.finishFailure(current.taskId, message)
+                }
             }
-
-            override fun onCancelled() {
-                if (isFinishing || isDestroyed) return
-                finishExportUi()
-                Toast.makeText(this@EditorActivity, "Export cancelled · any completed checkpoints were kept for retry", Toast.LENGTH_LONG).show()
-            }
-
-            override fun onError(message: String, throwable: Throwable?) {
-                if (isFinishing || isDestroyed) return
-                finishExportUi()
-                AlertDialog.Builder(this@EditorActivity)
-                    .setTitle("Export failed")
-                    .setMessage(message)
-                    .setPositiveButton("OK", null)
-                    .show()
-            }
-        })
-        if (!started) {
             finishExportUi()
-            Toast.makeText(this, "Unable to start export", Toast.LENGTH_SHORT).show()
+            AlertDialog.Builder(this)
+                .setTitle("Export could not start")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
-    private fun showExportProgressDialog() {
+    private fun showExportProgressDialog(initialProgress: Int = 0, initialMessage: String = "Preparing foreground export") {
         exportDialog?.dismiss()
         val density = resources.displayMetrics.density
         val content = LinearLayout(this).apply {
@@ -3509,13 +3542,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             setPadding(horizontal, vertical, horizontal, vertical)
         }
         val label = TextView(this).apply {
-            text = "Preparing export · 0%"
+            text = "$initialMessage · ${initialProgress.coerceIn(0, 100)}%"
             setTextColor(getColor(R.color.vedito_text))
             textSize = 13f
         }
         val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progress = 0
+            progress = initialProgress.coerceIn(0, 100)
             isIndeterminate = false
         }
         content.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -3528,9 +3561,73 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             .setTitle("Exporting Vedito project")
             .setView(content)
             .setCancelable(false)
-            .setNegativeButton("Cancel") { _, _ -> exportEngine.cancel() }
+            .setNegativeButton("Cancel") { _, _ -> ExportForegroundService.cancel(this) }
             .create()
             .also { it.show() }
+    }
+
+    private fun syncExportUiFromStore() {
+        if (!::exportTaskStore.isInitialized || !::project.isInitialized || !::binding.isInitialized) return
+        val snapshot = exportTaskStore.read() ?: run {
+            finishExportUi()
+            return
+        }
+        if (snapshot.projectId != project.id) return
+
+        when {
+            snapshot.state.isActive -> {
+                binding.exportVideoButton.isEnabled = false
+                binding.exportVideoButton.alpha = 0.45f
+                if (exportDialog == null) {
+                    showExportProgressDialog(snapshot.progress, snapshot.message)
+                } else {
+                    exportProgressBar?.progress = snapshot.progress
+                    exportProgressLabel?.text = "${snapshot.message} · ${snapshot.progress}%"
+                }
+            }
+            snapshot.state.isTerminal -> {
+                finishExportUi()
+                if (snapshot.updatedAtMs <= lastHandledExportTerminalAt) return
+                lastHandledExportTerminalAt = snapshot.updatedAtMs
+                when (snapshot.state) {
+                    ExportTaskStore.State.SUCCEEDED -> showForegroundExportCompleted(snapshot)
+                    ExportTaskStore.State.CANCELLED -> Toast.makeText(
+                        this,
+                        "Export cancelled · completed checkpoints kept for retry",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    ExportTaskStore.State.TIMED_OUT -> AlertDialog.Builder(this)
+                        .setTitle("Export paused")
+                        .setMessage(snapshot.errorMessage ?: snapshot.message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                    ExportTaskStore.State.FAILED -> AlertDialog.Builder(this)
+                        .setTitle("Export failed")
+                        .setMessage(snapshot.errorMessage ?: snapshot.message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                    else -> Unit
+                }
+                exportTaskStore.clearTerminal(snapshot.taskId)
+            }
+        }
+    }
+
+    private fun showForegroundExportCompleted(snapshot: ExportTaskStore.Snapshot) {
+        val seconds = (snapshot.elapsedMs / 1_000f).coerceAtLeast(0f)
+        val settings = snapshot.settings
+        AlertDialog.Builder(this)
+            .setTitle("Export complete")
+            .setMessage("${settings.preset.label} · ${settings.frameRate} fps · ${settings.videoCodec.label.substringBefore('·').trim()} · ${String.format("%.1f", seconds)}s render time")
+            .setNegativeButton("Done", null)
+            .setPositiveButton("Open") { _, _ ->
+                val viewIntent = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(snapshot.output, "video/mp4")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { startActivity(viewIntent) }
+                    .onFailure { Toast.makeText(this, "Video saved", Toast.LENGTH_SHORT).show() }
+            }
+            .show()
     }
 
     private fun finishExportUi() {
