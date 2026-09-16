@@ -1,17 +1,14 @@
-# Vedito Patch 28C.3.2 — CapCut Layout Alignment
+# Vedito Patch 28C.3.3 — Preview + Timeline Final Polish
 
-Version: **0.28.7** (`versionCode 35`)  
+Version: **0.28.8** (`versionCode 36`)  
 Project persistence schema: **v20**
 
 ## What this patch changes
-- Aligns the Editor timeline density with the approved CapCut reference while keeping Vedito branding and engine behavior.
-- Splits the timeline into a **112dp left utility rail** and a dedicated right track canvas.
-- Utility rail uses real actions: **Add / Split / Copy**, plus Audio/Text tool entry points.
-- Raises timeline viewport to **184dp**; Video is 44dp and persistent Audio/Text lanes are 26dp.
-- Ruler and the single shared playhead live only on the track canvas.
-- Optional Overlay/Captions/Effects lanes remain data-driven and scroll vertically when present.
-- Replaces the horizontally clipped bottom tool strip with a fixed weighted 8-item dock so every tool stays visible.
-- Context drawer remains collapsed by default and opens only when a tool is selected.
+- Restores the **original 54dp/58dp bottom tool-tab sizing** from the pre-28C.3.2 editor instead of shrinking eight tabs into weighted cells.
+- Keeps all 8 tools and uses a horizontal dock only when the device width genuinely needs it; icons/labels are no longer reduced just to force-fit.
+- Returns the persistent timeline viewport to **136dp**, giving the preview more room while keeping Video + Audio + Text visible.
+- Bounds the shared playhead to the actual visible track stack instead of drawing through unused timeline space. Optional Overlay/Captions/Effects extend the playhead only when those lanes exist.
+- Preserves aspect-ratio-safe preview fitting and canonical transform/export behavior; the patch only improves available preview space and editor proportions.
 
 ## Engine compatibility
 - UI/layout-only patch. No project-model/persistence changes; schema remains **v20**.

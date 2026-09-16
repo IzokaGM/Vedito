@@ -388,6 +388,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.trackingOverlay.onAnchorCommitted = { x, y -> upsertTrackingAnchor(x, y) }
         binding.timingToolbar.onAction = ::handleTimingAction
         binding.previewContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyCanvasPreviewLayout() }
+        binding.timelineTracksFrame.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updatePersistentTimelinePlayheadBounds() }
         binding.overlayPreviewLayer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
         }
@@ -2318,6 +2319,28 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.overlayLane.visibility = if (overlayClips.isNotEmpty()) View.VISIBLE else View.GONE
         binding.captionLane.visibility = if (captionSegments.isNotEmpty()) View.VISIBLE else View.GONE
         binding.effectLane.visibility = if (effectClips.isNotEmpty()) View.VISIBLE else View.GONE
+        updatePersistentTimelinePlayheadBounds()
+    }
+
+    private fun updatePersistentTimelinePlayheadBounds() {
+        if (!::binding.isInitialized) return
+        val density = resources.displayMetrics.density
+        var desiredDp = 116f // ruler + Video + persistent Audio/Text lanes
+        if (binding.overlayLane.visibility == View.VISIBLE) desiredDp += 25f
+        if (binding.captionLane.visibility == View.VISIBLE) desiredDp += 25f
+        if (binding.effectLane.visibility == View.VISIBLE) desiredDp += 25f
+        val desiredPx = (desiredDp * density).roundToInt()
+        val fallbackMaxPx = (132f * density).roundToInt()
+        val maxPx = binding.timelineTracksFrame.height.takeIf { it > 0 } ?: fallbackMaxPx
+        val height = minOf(desiredPx, maxPx)
+        val current = binding.timelinePlayheadOverlay.layoutParams as? FrameLayout.LayoutParams
+        if (current == null || current.height != height || current.gravity != Gravity.TOP) {
+            binding.timelinePlayheadOverlay.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                height,
+                Gravity.TOP
+            )
+        }
     }
 
     private fun updatePersistentTimelineChrome() {

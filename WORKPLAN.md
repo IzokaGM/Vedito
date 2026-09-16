@@ -335,3 +335,12 @@ Next only after visual approval: **Patch 28D — Export UI Overhaul**.
 
 Next only after visual approval: **Patch 28D — Export UI Overhaul**.
 
+## Patch 28C.3.3 — Preview + Timeline Final Polish
+- [x] Restore original bottom tool-tab sizing instead of shrinking icons into weighted cells.
+- [x] Keep all 8 tools; allow horizontal dock scrolling only when phone width actually requires it.
+- [x] Return persistent timeline viewport to 136dp so Preview gets the reclaimed vertical space.
+- [x] Bound the shared playhead to the visible timeline lane stack and clamp it to the timeline viewport.
+- [x] Preserve Video/Audio/Text persistence, left utility rail, right track canvas, aspect-ratio-safe Preview and canonical engine state.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next only after visual approval: **Patch 28D — Export UI Overhaul**.

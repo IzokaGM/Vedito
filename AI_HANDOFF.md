@@ -1,10 +1,10 @@
-# AI Handoff — Patch 28C.3.2
+# AI Handoff — Patch 28C.3.3
 
-Current version: **0.28.7 / code 35**. Schema remains **v20**.
+Current version: **0.28.8 / code 36**. Schema remains **v20**.
 
 Latest correction targets device density rather than new engine behavior: the editor now opens with the context drawer collapsed, the main timeline is borderless/slimmer, technical clip metadata is removed from chrome, Undo/Redo are persistent transport actions, and Clip actions are icon-first. Tool drawers open on demand and tapping the active tool collapses them.
 
-Patch 28C.3.2 is the visual-density alignment after device comparison with the approved CapCut reference. The editor now uses a 112dp left utility rail with real Add/Split/Copy actions and Audio/Text tool entry points; ruler/playhead/tracks live in the right canvas. Timeline height is 184dp, base lanes are slimmer, and the bottom 8-tool dock is fixed/weighted so it cannot clip horizontally. Engine/schema/export behavior is unchanged.
+Patch 28C.3.3 is the final editor-proportion correction after device validation. It **restores the original tool-tab sizing** (54dp, Captions 58dp) and lets the dock scroll only when a device genuinely needs it instead of shrinking every icon. The persistent timeline is back to a compact 136dp viewport, while the shared playhead height follows only the visible lane stack. The extra vertical space returns to Preview; aspect-ratio/transform/export semantics are unchanged.
 
 ---
 
@@ -14,7 +14,7 @@ Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.28.7 / versionCode 35 / project schema v20**.
+- Current patch: **0.28.8 / versionCode 36 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -43,5 +43,5 @@ Patch 28C/28C.1/28C.2 rebuild and then tighten the Editor shell without changing
 Next planned milestone: **Patch 28D — Export UI Overhaul**, unless CI/device testing exposes an Editor regression first.
 
 
-## Latest UI patch — 28C.3.2
-Persistent multi-track timeline: Video/Audio/Text always visible; empty Audio/Text lanes launch real add flows; Overlay/Captions/Effects appear with content; ruler and shared playhead sync to the main timeline viewport. Version 0.28.5 / code 33; schema v20 unchanged. Patch 28C.3.1 follows with layout-only recovery at version 0.28.6 / code 34; Patch 28C.3.2 then aligns device density at version 0.28.7 / code 35.
+## Latest UI patch — 28C.3.3
+Persistent multi-track timeline: Video/Audio/Text always visible; empty Audio/Text lanes launch real add flows; Overlay/Captions/Effects appear with content; ruler and shared playhead sync to the main timeline viewport. Version 0.28.5 / code 33; schema v20 unchanged. Patch 28C.3.1 follows with layout-only recovery at version 0.28.6 / code 34; Patch 28C.3.2 aligns the left-rail/right-canvas structure at version 0.28.7 / code 35; Patch 28C.3.3 restores original tool-tab size and tightens the persistent timeline at version 0.28.8 / code 36.
