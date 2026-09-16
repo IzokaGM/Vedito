@@ -329,6 +329,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
                 addVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
             }
         }
+        binding.timelineQuickAddButton.setOnClickListener {
+            if (!addingMedia) {
+                addVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+            }
+        }
+        binding.timelineQuickSplitButton.setOnClickListener { splitAtPlayhead() }
+        binding.timelineQuickCopyButton.setOnClickListener { duplicateSelectedClip() }
+        binding.timelineQuickAudioButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.AUDIO) }
+        binding.timelineQuickTextButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.TEXT) }
         binding.splitButton.setOnClickListener { splitAtPlayhead() }
         binding.deleteButton.setOnClickListener { deleteSelectedClip() }
         binding.undoButton.setOnClickListener { undoEdit() }
@@ -2343,10 +2352,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
         binding.splitButton.isEnabled = canSplit
         binding.splitButton.alpha = if (canSplit) 1f else 0.42f
+        binding.timelineQuickSplitButton.isEnabled = canSplit
+        binding.timelineQuickSplitButton.alpha = if (canSplit) 1f else 0.42f
         binding.deleteButton.isEnabled = selected != null && clips.size > 1
         binding.deleteButton.alpha = if (binding.deleteButton.isEnabled) 1f else 0.42f
         binding.duplicateButton.isEnabled = selected != null
         binding.duplicateButton.alpha = if (selected != null) 1f else 0.42f
+        binding.timelineQuickCopyButton.isEnabled = selected != null
+        binding.timelineQuickCopyButton.alpha = if (selected != null) 1f else 0.42f
         binding.replaceButton.isEnabled = selected != null
         binding.replaceButton.alpha = if (selected != null) 1f else 0.42f
         val canExtractAudio = selected != null && selected.timing.mode == ClipPlaybackMode.FORWARD && kotlin.math.abs(selected.timing.speed - 1f) < 0.001f
@@ -2382,6 +2395,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.addClipButton.isEnabled = !addingMedia
         binding.addClipButton.alpha = if (addingMedia) 0.5f else 1f
         binding.addClipButton.text = if (addingMedia) "Adding" else "Add"
+        binding.timelineQuickAddButton.isEnabled = !addingMedia
+        binding.timelineQuickAddButton.alpha = if (addingMedia) 0.5f else 1f
+        binding.timelineQuickAddButton.text = if (addingMedia) "Adding" else "Add"
     }
 
     private fun requestThumbnails() {

@@ -323,3 +323,15 @@ Next after green + visual approval: **Patch 28D — Export UI Overhaul**.
 - [ ] GitHub Actions Android build + device screenshot validation.
 
 Next only after visual approval: **Patch 28D — Export UI Overhaul**.
+
+## Patch 28C.3.2 — CapCut Layout Alignment
+- [x] Split timeline chrome into a compact left utility rail and right track canvas.
+- [x] Wire left utility actions to real Add/Split/Copy behavior and real Audio/Text tool modes.
+- [x] Increase timeline viewport to 184dp while keeping preview as the flexible remaining-height stage.
+- [x] Slim Video/Audio/Text lanes and keep optional tracks vertically scrollable.
+- [x] Constrain ruler/shared playhead to the track canvas only.
+- [x] Replace the horizontally clipped bottom tool strip with a fixed weighted 8-item dock.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next only after visual approval: **Patch 28D — Export UI Overhaul**.
+

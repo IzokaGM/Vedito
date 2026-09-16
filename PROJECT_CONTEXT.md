@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.6 / versionCode 34**
+- Current patch: **0.28.7 / versionCode 35**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -89,6 +89,14 @@ Current external CI concept:
 - The shared playhead overlays only the bounded timeline viewport, so it cannot influence the editor's remaining-height allocation.
 - The intended shell is restored to top bar → preview → transport → compact multi-track timeline → tool dock → optional context drawer.
 - This is layout-only: project schema stays v20 and render/export/recovery semantics remain unchanged.
+
+
+## CapCut-density editor alignment (Patch 28C.3.2)
+- Timeline chrome is split into a compact **left utility rail + right track canvas**, matching the approved density reference without copying proprietary assets. The rail exposes real clip actions (`Add / Split / Copy`) plus Audio/Text tool entry points; the track canvas owns ruler, lanes and shared playhead.
+- Timeline viewport grows to **184dp** so Video/Audio/Text have usable editing space while the preview still receives the flexible remaining height. Video is 44dp; Audio/Text are 26dp; optional Overlay/Captions/Effects lanes remain compact and vertically scroll when needed.
+- The bottom editor tool dock is now a fixed weighted 8-item row rather than a horizontally clipped strip, so every tool stays on-screen on phone widths.
+- Shared playhead/ruler are constrained to the track canvas only. Empty Audio/Text lane add actions remain real and canonical project state is unchanged.
+- This patch is UI/layout-only: schema stays v20 and renderer/export/recovery semantics remain unchanged.
 
 ## Product quality rules
 - Engine correctness before feature count.

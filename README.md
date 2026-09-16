@@ -1,27 +1,25 @@
-# Vedito Patch 28C.3.1 — Editor Layout Recovery
+# Vedito Patch 28C.3.2 — CapCut Layout Alignment
 
-Version: **0.28.6** (`versionCode 34`)  
+Version: **0.28.7** (`versionCode 35`)  
 Project persistence schema: **v20**
 
-## What Patch 28C.3.1 fixes
-- Emergency UI recovery for the Patch 28C.3 device regression where the persistent timeline consumed the remaining editor height and collapsed the preview/tool dock.
-- Gives the persistent multi-track timeline a **bounded 136dp viewport** instead of an unconstrained `wrap_content` measurement path.
-- Keeps the ruler fixed and puts Video/Audio/Text plus optional Overlay/Captions/Effects lanes inside an internal vertical scroll area.
-- Keeps the shared playhead over the **timeline viewport only**, so it no longer participates in measuring the whole remaining screen.
-- Restores the intended editor hierarchy: **top bar → preview → transport → compact multi-track timeline → tool dock → optional context drawer**.
-- Video + Audio + Text remain persistent; optional lanes still appear from real project content.
+## What this patch changes
+- Aligns the Editor timeline density with the approved CapCut reference while keeping Vedito branding and engine behavior.
+- Splits the timeline into a **112dp left utility rail** and a dedicated right track canvas.
+- Utility rail uses real actions: **Add / Split / Copy**, plus Audio/Text tool entry points.
+- Raises timeline viewport to **184dp**; Video is 44dp and persistent Audio/Text lanes are 26dp.
+- Ruler and the single shared playhead live only on the track canvas.
+- Optional Overlay/Captions/Effects lanes remain data-driven and scroll vertically when present.
+- Replaces the horizontally clipped bottom tool strip with a fixed weighted 8-item dock so every tool stays visible.
+- Context drawer remains collapsed by default and opens only when a tool is selected.
 
 ## Engine compatibility
-- Layout-only recovery. No project-model/persistence changes; schema remains **v20**.
+- UI/layout-only patch. No project-model/persistence changes; schema remains **v20**.
 - No render/export semantic changes; recovery salt remains **`vedito-render-p26-r1`**.
-- Existing Patch 28C.3 timeline data/views remain canonical; this patch only constrains their viewport and measurement behavior.
+- Video/Audio/Text lanes still consume the same canonical project collections and existing edit behavior.
 
 ## Validation note
-Full Android build remains the GitHub Actions gate because the local environment cannot download the Gradle 9.6 distribution. Local validation covers XML parsing, ID/resource checks, overlay application and ZIP integrity.
+Full Android build remains the GitHub Actions gate because the local environment cannot download the Gradle 9.6 distribution. Local validation covers XML parsing, resource/binding ID checks, Kotlin structural checks, patch overlay application and ZIP integrity.
 
 ## Next UI milestone
-Device screenshot validation first. **Do not start Patch 28D** until the Editor layout is visually approved.
-
-### Patch 28C.3 — Persistent Multi-Track Timeline
-The editor now keeps Video, Audio and Text tracks visible together, adds real empty-lane add affordances, dynamically shows Overlay/Captions/Effects tracks when used, and synchronizes all lanes to one ruler/playhead.
-
+Device screenshot validation first. **Do not start Patch 28D** until the Editor is visually approved.
