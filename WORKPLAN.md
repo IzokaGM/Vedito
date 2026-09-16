@@ -312,3 +312,14 @@ Next after green: **Patch 28D — Export UI Overhaul**.
 - [ ] GitHub Actions Android build + device screenshot validation.
 
 Next after green + visual approval: **Patch 28D — Export UI Overhaul**.
+
+
+## Patch 28C.3.1 — Editor Layout Recovery
+- [x] Fix device regression where the persistent timeline consumed remaining screen height and collapsed preview/tool dock.
+- [x] Bound timeline viewport to 136dp so preview keeps the flexible remaining height.
+- [x] Keep ruler fixed while Video/Audio/Text and optional lanes scroll vertically inside the bounded track viewport.
+- [x] Keep the shared playhead inside the bounded timeline viewport only.
+- [x] Preserve persistent Video/Audio/Text lanes and dynamic Overlay/Captions/Effects behavior.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next only after visual approval: **Patch 28D — Export UI Overhaul**.

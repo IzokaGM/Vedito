@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.5 / versionCode 33**
+- Current patch: **0.28.6 / versionCode 34**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -82,6 +82,13 @@ Current external CI concept:
 - A compact synced time ruler and one shared visual playhead span every visible lane. Individual lane playheads are suppressed so the stacked tracks read as one timeline.
 - Timeline zoom/viewport remain owned by the main `TimelineScrubberView`; every secondary lane, ruler and shared playhead consume the same zoom/start state.
 - Selecting an Audio/Text/Overlay/Caption/Effect block opens its matching context tool while preserving the canonical project model and edit behavior. Schema remains v20; renderer/export/recovery semantics are unchanged.
+
+## Editor layout recovery (Patch 28C.3.1)
+- Patch 28C.3 exposed an Android measurement regression: a `match_parent` shared-playhead overlay inside a `wrap_content` timeline frame could consume the editor's remaining vertical space and collapse the preview/tool dock on device.
+- Patch 28C.3.1 bounds the persistent timeline to a **136dp viewport**. The ruler stays fixed; the track stack scrolls vertically inside the viewport when optional lanes exceed the base Video/Audio/Text set.
+- The shared playhead overlays only the bounded timeline viewport, so it cannot influence the editor's remaining-height allocation.
+- The intended shell is restored to top bar → preview → transport → compact multi-track timeline → tool dock → optional context drawer.
+- This is layout-only: project schema stays v20 and render/export/recovery semantics remain unchanged.
 
 ## Product quality rules
 - Engine correctness before feature count.

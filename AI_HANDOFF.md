@@ -1,10 +1,10 @@
-# AI Handoff — Patch 28C.2
+# AI Handoff — Patch 28C.3.1
 
-Current version: **0.28.4 / code 32**. Schema remains **v20**.
+Current version: **0.28.6 / code 34**. Schema remains **v20**.
 
 Latest correction targets device density rather than new engine behavior: the editor now opens with the context drawer collapsed, the main timeline is borderless/slimmer, technical clip metadata is removed from chrome, Undo/Redo are persistent transport actions, and Clip actions are icon-first. Tool drawers open on demand and tapping the active tool collapses them.
 
-Next planned UI milestone after device/CI green: **Patch 28D — Export UI Overhaul**.
+Patch 28C.3.1 is an emergency layout recovery: bound the multi-track timeline to 136dp, move lane overflow into an internal vertical scroll area, and keep the shared playhead inside that bounded viewport. Device screenshot approval is required before Patch 28D.
 
 ---
 
@@ -14,7 +14,7 @@ Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.28.4 / versionCode 32 / project schema v20**.
+- Current patch: **0.28.6 / versionCode 34 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -44,4 +44,4 @@ Next planned milestone: **Patch 28D — Export UI Overhaul**, unless CI/device t
 
 
 ## Latest UI patch — 28C.3
-Persistent multi-track timeline: Video/Audio/Text always visible; empty Audio/Text lanes launch real add flows; Overlay/Captions/Effects appear with content; ruler and shared playhead sync to the main timeline viewport. Version 0.28.5 / code 33; schema v20 unchanged.
+Persistent multi-track timeline: Video/Audio/Text always visible; empty Audio/Text lanes launch real add flows; Overlay/Captions/Effects appear with content; ruler and shared playhead sync to the main timeline viewport. Version 0.28.5 / code 33; schema v20 unchanged. Patch 28C.3.1 follows with layout-only recovery at version 0.28.6 / code 34.
