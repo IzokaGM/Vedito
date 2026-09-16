@@ -1,34 +1,22 @@
-# Vedito Patch 28A — Branding Foundation
+# Vedito Patch 28B — Home UI Overhaul
 
-Version: **0.28.0** (`versionCode 28`)  
+Version: **0.28.1** (`versionCode 29`)  
 Project persistence schema: **v20**
 
-## Locked brand direction
-- Approved mark: **V + play + cut-frame**.
-- Wordmark: **Vedito**.
-- Tagline: **Shape the cut.**
-- Premium dark-first UI direction based on the approved mockup.
-- Brand signature leads with cyan/electric blue; indigo is a gradient tail, not the app's single secondary color.
-- Editor UI uses functional multi-accent semantics: video blue, text purple, audio green, effects amber and export cyan.
-
-## What Patch 28A adds
-- Isolated production `vedito_brand_mark.png` asset derived from the approved logo direction.
-- Adaptive launcher/round icon on a deep-dark background.
-- Android 12+ branded splash.
-- Home header now displays the official Vedito mark and the approved tagline.
-- Central color, radius, typography and control-style tokens for the next UI overhaul patches.
-- Existing legacy accent references resolve to brand cyan so old screens stop inheriting the previous violet-heavy identity.
-- Transparent edge-to-edge system bars keep dark icon contrast enforcement disabled where supported.
-
-## Intentionally not in 28A
-- Full Home/dashboard redesign.
-- Editor timeline/tool hierarchy redesign.
-- Dedicated Color/Effects screen redesign.
-- Export screen redesign.
-
-Those are the next UI-overhaul patches built on this brand foundation instead of another parallel style system.
+## What Patch 28B changes
+- Rebuilds Home into the approved premium mockup hierarchy instead of the old sparse utility screen.
+- Brand header uses the official Vedito production mark and `Shape the cut.` tagline.
+- Large gradient **New Project** hero CTA remains wired to the real Android video picker/project creation flow.
+- Adds functional dashboard cards for Templates, Drafts and Recent Exports without inventing unsupported project data.
+- Recent projects become a two-column visual grid with real source-video thumbnails, duration badges, clip/resolution metadata, and collapsed/expanded `See All` behavior.
+- Adds a Featured Templates preview rail as visual product direction only; template taps explicitly report that packs are preview-only in this build.
+- Adds a fixed premium bottom navigation shell. Edit opens the latest draft (or starts import), Assets opens the real picker, Export routes through the latest editor because export settings still live there, and Profile explicitly reports that the feature is not in this build.
+- Keeps the Patch 28A dark premium + functional multi-accent design system intact.
 
 ## Engine compatibility
-- No project-model changes; schema remains **v20**.
-- No render/export semantic changes; recovery salt remains **`vedito-render-p26-r1`**.
+- No project-model or persistence changes; schema remains **v20**.
+- No preview/render/export semantic changes; recovery salt remains **`vedito-render-p26-r1`**.
 - Patch 27 foreground export behavior is unchanged.
+
+## Next UI milestone
+**Patch 28C — Editor UI Overhaul**: preview hierarchy, multi-track timeline presentation, grouped tool dock and removal of the current debug-button feel while preserving canonical editor behavior.

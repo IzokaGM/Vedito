@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.0 / versionCode 28**
+- Current patch: **0.28.1 / versionCode 29**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -43,6 +43,14 @@ Current external CI concept:
 - Android 12+ splash uses the Vedito adaptive launcher icon on the deep-dark brand background.
 - Legacy `vedito_accent` remains only as a compatibility alias to brand cyan; new UI should use semantic brand/function tokens.
 - This patch intentionally establishes branding, not the full Home/Editor/Export redesign.
+
+
+## Home UI overhaul (Patch 28B)
+- Home follows the approved mockup hierarchy: branded header, hero import CTA, quick dashboard cards, two-column recent-project grid, Featured Templates preview rail and fixed bottom navigation shell.
+- Recent cards use the first source asset for asynchronous video-frame thumbnails; failures fall back to the branded card surface rather than blocking Home.
+- New Project and Assets use the real system video picker. Draft/Edit open the latest real project. Export routes through the latest editor because export configuration remains editor-owned in this patch.
+- Templates are explicitly preview-only and Profile explicitly reports that it is not implemented; do not present these as completed product features until their real data/actions exist.
+- Home redesign changes no project schema, renderer behavior or export recovery fingerprint.
 
 ## Product quality rules
 - Engine correctness before feature count.
@@ -263,6 +271,6 @@ Important modules:
 - Patch 27 does not change render semantics, project JSON or export fingerprint: schema remains v20 and recovery salt remains `vedito-render-p26-r1`.
 
 ## Next milestone
-**Patch 28 — Capture / Voice-over Foundation** unless device testing exposes a Patch 27 regression first.
+**Patch 28C — Editor UI Overhaul** following the approved mockup direction, unless device testing exposes a Patch 28B regression first.
 
 See `WORKPLAN.md` for the full roadmap.

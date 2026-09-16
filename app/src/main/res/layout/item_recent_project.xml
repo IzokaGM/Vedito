@@ -3,34 +3,58 @@
     android:id="@+id/recentCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
-    android:background="@drawable/bg_recent"
+    android:background="@drawable/bg_recent_card"
     android:clickable="true"
     android:focusable="true"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="16dp">
+    android:orientation="vertical">
 
     <FrameLayout
-        android:layout_width="52dp"
-        android:layout_height="52dp"
-        android:background="@drawable/bg_badge">
+        android:layout_width="match_parent"
+        android:layout_height="100dp">
 
-        <TextView
+        <ImageView
+            android:id="@+id/projectThumbnail"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="▶"
-            android:textColor="@color/vedito_video"
-            android:textSize="18sp" />
+            android:background="@drawable/bg_thumbnail_fallback"
+            android:clipToOutline="true"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop" />
+
+        <TextView
+            android:id="@+id/projectDuration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_marginStart="9dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_project_badge"
+            android:fontFamily="sans-serif-medium"
+            android:text="00:00"
+            android:textColor="@color/vedito_white"
+            android:textSize="9sp" />
+
+        <ImageView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="7dp"
+            android:layout_marginEnd="7dp"
+            android:background="@drawable/bg_project_badge"
+            android:contentDescription="@null"
+            android:padding="5dp"
+            android:src="@drawable/ic_more"
+            android:tint="@color/vedito_white" />
     </FrameLayout>
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="14dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingStart="11dp"
+        android:paddingTop="9dp"
+        android:paddingEnd="11dp"
+        android:paddingBottom="11dp">
 
         <TextView
             android:id="@+id/projectName"
@@ -41,23 +65,17 @@
             android:includeFontPadding="false"
             android:maxLines="1"
             android:textColor="@color/vedito_text"
-            android:textSize="15sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/projectMeta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
             android:includeFontPadding="false"
+            android:maxLines="1"
             android:textColor="@color/vedito_muted"
-            android:textSize="12sp" />
+            android:textSize="10sp" />
     </LinearLayout>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:text="›"
-        android:textColor="@color/vedito_muted"
-        android:textSize="28sp" />
 </LinearLayout>

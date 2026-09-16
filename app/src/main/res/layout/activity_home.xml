@@ -1,157 +1,487 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/vedito_bg"
-    android:fillViewport="true"
-    android:overScrollMode="never">
+    android:background="@color/vedito_bg">
 
-    <LinearLayout
+    <ScrollView
+        android:id="@+id/homeScroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="24dp"
-        android:paddingTop="28dp"
-        android:paddingEnd="24dp"
-        android:paddingBottom="32dp">
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:paddingBottom="104dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="54dp"
-                android:layout_height="54dp"
-                android:contentDescription="@string/app_name"
-                android:scaleType="fitCenter"
-                android:src="@drawable/vedito_brand_mark" />
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingTop="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="30dp">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-medium"
-                    android:includeFontPadding="false"
-                    android:text="@string/app_name"
-                    android:textColor="@color/vedito_text"
-                    android:textSize="30sp" />
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/app_name"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/vedito_brand_mark" />
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:includeFontPadding="false"
-                    android:text="@string/home_tagline"
-                    android:textColor="@color/vedito_muted"
-                    android:textSize="14sp" />
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:text="@string/app_name"
+                        android:textColor="@color/vedito_text"
+                        android:textSize="26sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:includeFontPadding="false"
+                        android:text="@string/home_tagline"
+                        android:textColor="@color/vedito_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
             </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_badge"
-                android:fontFamily="sans-serif-medium"
-                android:paddingStart="11dp"
-                android:paddingTop="7dp"
-                android:paddingEnd="11dp"
-                android:paddingBottom="7dp"
-                android:text="0.28"
-                android:textColor="@color/vedito_muted"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="34dp"
-            android:background="@drawable/bg_panel"
-            android:orientation="vertical"
-            android:padding="22dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="Make the first cut"
-                android:textColor="@color/vedito_text"
-                android:textSize="24sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:includeFontPadding="false"
-                android:lineSpacingExtra="2dp"
-                android:text="@string/import_video"
-                android:textColor="@color/vedito_muted"
-                android:textSize="14sp" />
 
             <LinearLayout
                 android:id="@+id/newProjectButton"
                 android:layout_width="match_parent"
-                android:layout_height="58dp"
-                android:layout_marginTop="22dp"
-                android:background="@drawable/bg_primary_button"
+                android:layout_height="86dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_home_hero"
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?android:attr/selectableItemBackground"
-                android:gravity="center"
-                android:orientation="horizontal">
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="18dp"
+                android:paddingEnd="16dp">
+
+                <FrameLayout
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_brand_icon_plate">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_plus"
+                        android:tint="@color/vedito_white" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false"
+                        android:text="@string/new_project"
+                        android:textColor="@color/vedito_white"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:includeFontPadding="false"
+                        android:text="@string/start_something_amazing"
+                        android:textColor="#DDF8FCFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <ImageView
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:contentDescription="@null"
-                    android:src="@drawable/ic_plus" />
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="@color/vedito_white" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="116dp"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/templatesCard"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_quick_templates"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="bottom"
+                    android:orientation="vertical"
+                    android:padding="13dp">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_grid"
+                        android:tint="@color/vedito_text_track" />
+
+                    <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/templates"
+                        android:textColor="@color/vedito_text"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="@string/coming_soon"
+                        android:textColor="@color/vedito_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/draftsCard"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="5dp"
+                    android:layout_marginEnd="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_quick_drafts"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="bottom"
+                    android:orientation="vertical"
+                    android:padding="13dp">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_draft"
+                        android:tint="@color/vedito_video" />
+
+                    <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/drafts"
+                        android:textColor="@color/vedito_text"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/draftsCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="0"
+                        android:textColor="@color/vedito_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/exportsCard"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_quick_exports"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="bottom"
+                    android:orientation="vertical"
+                    android:padding="13dp">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_export_nav"
+                        android:tint="@color/vedito_export" />
+
+                    <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:text="@string/recent_exports"
+                        android:textColor="@color/vedito_text"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="@string/background_ready"
+                        android:textColor="@color/vedito_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/recentHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="30dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:text="@string/recent_projects"
+                    android:textColor="@color/vedito_text"
+                    android:textSize="19sp" />
+
+                <TextView
+                    android:id="@+id/recentSeeAll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_section_action"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingStart="11dp"
+                    android:paddingTop="7dp"
+                    android:paddingEnd="11dp"
+                    android:paddingBottom="7dp"
+                    android:text="@string/see_all"
+                    android:textColor="@color/vedito_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/emptyRecentText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_recent"
+                android:padding="18dp"
+                android:text="@string/no_projects"
+                android:textColor="@color/vedito_muted"
+                android:textSize="13sp" />
+
+            <GridLayout
+                android:id="@+id/recentGrid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:alignmentMode="alignMargins"
+                android:columnCount="2"
+                android:orientation="horizontal"
+                android:useDefaultMargins="false" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:text="@string/featured_templates"
+                    android:textColor="@color/vedito_text"
+                    android:textSize="19sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:fontFamily="sans-serif-medium"
-                    android:includeFontPadding="false"
-                    android:text="@string/new_edit"
-                    android:textColor="@color/vedito_white"
-                    android:textSize="16sp" />
+                    android:text="@string/preview_only"
+                    android:textColor="@color/vedito_muted"
+                    android:textSize="11sp" />
             </LinearLayout>
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:id="@+id/templateCinematic"
+                        android:layout_width="138dp"
+                        android:layout_height="92dp"
+                        android:background="@drawable/bg_template_cinematic"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+                        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:contentDescription="@null" android:src="@drawable/ic_template_star" android:tint="@color/vedito_effect" />
+                        <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/cinematic" android:textColor="@color/vedito_text" android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/templateSocial"
+                        android:layout_width="138dp"
+                        android:layout_height="92dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_template_social"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+                        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:contentDescription="@null" android:src="@drawable/ic_template_star" android:tint="@color/vedito_text_track" />
+                        <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/social_media" android:textColor="@color/vedito_text" android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/templateVlog"
+                        android:layout_width="138dp"
+                        android:layout_height="92dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_template_vlog"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+                        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:contentDescription="@null" android:src="@drawable/ic_template_star" android:tint="@color/vedito_audio" />
+                        <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/vlog" android:textColor="@color/vedito_text" android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/templateMinimal"
+                        android:layout_width="138dp"
+                        android:layout_height="92dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_template_minimal"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+                        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:contentDescription="@null" android:src="@drawable/ic_template_star" android:tint="@color/vedito_video_selected" />
+                        <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="1" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium" android:text="@string/minimal" android:textColor="@color/vedito_text" android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
         </LinearLayout>
+    </ScrollView>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="34dp"
-            android:fontFamily="sans-serif-medium"
-            android:includeFontPadding="false"
-            android:text="@string/recent_projects"
-            android:textColor="@color/vedito_text"
-            android:textSize="18sp" />
-
-        <TextView
-            android:id="@+id/emptyRecentText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_recent"
-            android:padding="18dp"
-            android:text="@string/no_projects"
-            android:textColor="@color/vedito_muted"
-            android:textSize="14sp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="76dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_home_bottom_nav"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
         <LinearLayout
-            android:id="@+id/recentList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical" />
+            android:id="@+id/navHome"
+            android:layout_width="0dp"
+            android:layout_height="58dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_nav_selected"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView android:layout_width="21dp" android:layout_height="21dp" android:contentDescription="@null" android:src="@drawable/ic_home" android:tint="@color/vedito_brand_cyan" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:fontFamily="sans-serif-medium" android:text="@string/home" android:textColor="@color/vedito_brand_cyan" android:textSize="10sp" />
+        </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/navEdit"
+            android:layout_width="0dp"
+            android:layout_height="58dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView android:layout_width="21dp" android:layout_height="21dp" android:contentDescription="@null" android:src="@drawable/ic_edit_nav" android:tint="@color/vedito_text_secondary" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/edit" android:textColor="@color/vedito_muted" android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navAssets"
+            android:layout_width="0dp"
+            android:layout_height="58dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView android:layout_width="21dp" android:layout_height="21dp" android:contentDescription="@null" android:src="@drawable/ic_assets" android:tint="@color/vedito_text_secondary" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/assets" android:textColor="@color/vedito_muted" android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navExport"
+            android:layout_width="0dp"
+            android:layout_height="58dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView android:layout_width="21dp" android:layout_height="21dp" android:contentDescription="@null" android:src="@drawable/ic_export_nav" android:tint="@color/vedito_text_secondary" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/export" android:textColor="@color/vedito_muted" android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/navProfile"
+            android:layout_width="0dp"
+            android:layout_height="58dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView android:layout_width="21dp" android:layout_height="21dp" android:contentDescription="@null" android:src="@drawable/ic_profile" android:tint="@color/vedito_text_secondary" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/profile" android:textColor="@color/vedito_muted" android:textSize="10sp" />
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+</FrameLayout>

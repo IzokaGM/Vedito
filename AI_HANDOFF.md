@@ -4,7 +4,7 @@ Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.28.0 / versionCode 28 / project schema v20**.
+- Current patch: **0.28.1 / versionCode 29 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -26,4 +26,6 @@ Important limits: no WorkManager/vendor-specific fallback yet; no voice-over cap
 
 Patch 28A locks the Vedito brand direction before the UI overhaul: V + play + cut-frame logo, `Shape the cut.` tagline, dark premium base, cyan/blue signature gradient and functional multi-accent category colors. The generated presentation board is reference only; app resources use the isolated production mark.
 
-Next planned milestone: **Patch 28B — Home UI Overhaul**, followed by Editor and Export UI overhaul, unless CI/device testing exposes a branding regression first.
+Patch 28B rebuilds Home around that design system. The New Project/Assets routes are real picker flows; Draft/Edit open real projects; recent cards render real source-video thumbnails. Templates are preview-only and Profile is explicitly unimplemented. Export still belongs to Editor, so Home routes to the latest project rather than inventing an export-history model.
+
+Next planned milestone: **Patch 28C — Editor UI Overhaul**, followed by Export UI overhaul, unless CI/device testing exposes a Home regression first.

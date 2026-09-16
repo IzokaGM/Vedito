@@ -255,12 +255,17 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Android 15+ mediaProcessing + Android 14 compatibility dataSync service typing and permissions.
   - Persistent task/progress state, notification Cancel/deep-link, process redelivery and checkpoint resume.
   - Android timeout/start-failure hardening; schema v20 and render salt unchanged.
-- **Patch 28A:** Vedito Branding Foundation — current patch.
+- **Patch 28A:** Vedito Branding Foundation — locked after CI/device verification.
   - Locks V + play + cut-frame mark and `Shape the cut.` tagline.
   - Adds dark premium brand surfaces, cyan/blue signature gradient, and functional multi-accent semantic tokens.
   - Applies production mark to Home, adaptive launcher and Android 12+ splash.
   - Adds reusable typography/control styles and system-bar polish; project schema/render semantics remain v20 / `vedito-render-p26-r1`.
-- **Patch 28B–28D:** Home, Editor and Export UI/UX overhaul following the approved mockup direction.
+- **Patch 28B:** Home UI Overhaul — current patch.
+  - Premium mockup hierarchy, real import CTA, dashboard quick cards, video-thumbnail Recent Projects grid and bottom navigation shell.
+  - Unsupported Templates/Profile surfaces remain explicitly preview/not-implemented rather than pretending to be functional.
+  - Schema/render/recovery semantics unchanged.
+- **Patch 28C:** Editor UI Overhaul following the approved mockup direction.
+- **Patch 28D:** Export UI Overhaul following the approved mockup direction.
 - **Patch 29+:** capture/voice-over, then AI/templates/cloud.
 
 ## Release gates
