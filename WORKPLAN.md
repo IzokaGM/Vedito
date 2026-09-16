@@ -264,7 +264,7 @@ Onboarding/project polish, analytics/crash reporting, remote config/feature flag
   - Premium mockup hierarchy, real import CTA, dashboard quick cards, video-thumbnail Recent Projects grid and bottom navigation shell.
   - Unsupported Templates/Profile surfaces remain explicitly preview/not-implemented rather than pretending to be functional.
   - Schema/render/recovery semantics unchanged.
-- **Patch 28C:** Editor UI Overhaul — current patch.
+- **Patch 28C:** Editor UI Overhaul — locked after CI/device verification.
   - Premium preview-first editor shell with dedicated timeline stage.
   - Contextual auxiliary Text/Audio/Effects/Overlay/Captions lane instead of stacking every timeline permanently.
   - Fixed category tool dock + context drawer removes the old debug-button/control-dump feel while preserving existing engine behavior.
@@ -287,6 +287,17 @@ Before locking a major stage:
 - [x] Compact video timeline and collapse unused auxiliary timeline space.
 - [x] Reduce tool dock height and heavy selected styling.
 - [x] Replace internal Mask/Tracking shorthand with user-facing labels.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next after green: **Patch 28D — Export UI Overhaul**.
+
+
+## Patch 28C.2 — Editor Density Cleanup
+- [x] Collapse the context drawer by default and allow active-tool tap to close it.
+- [x] Remove technical clip metadata and large bordered timeline container from the default editor chrome.
+- [x] Move Undo/Redo to persistent transport controls.
+- [x] Make common clip actions icon-first and reduce pill/button density.
+- [x] Remove unnecessary preview/tool-dock/context-drawer strokes and collapse contextual auxiliary lanes with the drawer.
 - [ ] GitHub Actions Android build + device screenshot validation.
 
 Next after green: **Patch 28D — Export UI Overhaul**.

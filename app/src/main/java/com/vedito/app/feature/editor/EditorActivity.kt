@@ -188,6 +188,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var lastHandledExportTerminalAt = 0L
     private var editorToolMode = EditorToolMode.EDIT
     private var editSubtool = EditSubtool.CLIP
+    private var contextDrawerExpanded = false
 
     private val exportStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -300,20 +301,20 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.projectTitle.text = project.title
         binding.backButton.setOnClickListener { finish() }
         binding.exportVideoButton.setOnClickListener { showExportOptions() }
-        binding.toolEditButton.setOnClickListener { setEditorToolMode(EditorToolMode.EDIT) }
-        binding.toolSpeedButton.setOnClickListener { setEditorToolMode(EditorToolMode.SPEED) }
-        binding.toolTextButton.setOnClickListener { setEditorToolMode(EditorToolMode.TEXT) }
-        binding.toolAudioButton.setOnClickListener { setEditorToolMode(EditorToolMode.AUDIO) }
-        binding.toolEffectsButton.setOnClickListener { setEditorToolMode(EditorToolMode.EFFECTS) }
-        binding.toolColorButton.setOnClickListener { setEditorToolMode(EditorToolMode.COLOR) }
-        binding.toolLayersButton.setOnClickListener { setEditorToolMode(EditorToolMode.LAYERS) }
-        binding.toolCaptionsButton.setOnClickListener { setEditorToolMode(EditorToolMode.CAPTIONS) }
+        binding.toolEditButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.EDIT) }
+        binding.toolSpeedButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.SPEED) }
+        binding.toolTextButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.TEXT) }
+        binding.toolAudioButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.AUDIO) }
+        binding.toolEffectsButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.EFFECTS) }
+        binding.toolColorButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.COLOR) }
+        binding.toolLayersButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.LAYERS) }
+        binding.toolCaptionsButton.setOnClickListener { toggleEditorToolMode(EditorToolMode.CAPTIONS) }
         binding.editClipTab.setOnClickListener { setEditSubtool(EditSubtool.CLIP) }
         binding.editTransformTab.setOnClickListener { setEditSubtool(EditSubtool.TRANSFORM) }
         binding.editMaskTab.setOnClickListener { setEditSubtool(EditSubtool.MASK) }
         binding.editTrackTab.setOnClickListener { setEditSubtool(EditSubtool.TRACK) }
         setEditSubtool(EditSubtool.CLIP)
-        setEditorToolMode(EditorToolMode.EDIT)
+        setEditorToolMode(EditorToolMode.EDIT, expandDrawer = false)
         binding.playPauseButton.setOnClickListener {
             if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
         }
@@ -2199,8 +2200,15 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
     }
 
-    private fun setEditorToolMode(mode: EditorToolMode) {
+    private fun toggleEditorToolMode(mode: EditorToolMode) {
+        val expand = mode != editorToolMode || !contextDrawerExpanded
+        setEditorToolMode(mode, expandDrawer = expand)
+    }
+
+    private fun setEditorToolMode(mode: EditorToolMode, expandDrawer: Boolean = true) {
         editorToolMode = mode
+        contextDrawerExpanded = expandDrawer
+        binding.contextDrawer.visibility = if (expandDrawer) View.VISIBLE else View.GONE
 
         val panels = listOf(
             binding.editToolsPanel,
@@ -2226,11 +2234,13 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         activePanel.visibility = View.VISIBLE
 
-        val showsAuxTimeline = mode == EditorToolMode.AUDIO ||
-            mode == EditorToolMode.LAYERS ||
-            mode == EditorToolMode.TEXT ||
-            mode == EditorToolMode.CAPTIONS ||
-            mode == EditorToolMode.EFFECTS
+        val showsAuxTimeline = contextDrawerExpanded && (
+            mode == EditorToolMode.AUDIO ||
+                mode == EditorToolMode.LAYERS ||
+                mode == EditorToolMode.TEXT ||
+                mode == EditorToolMode.CAPTIONS ||
+                mode == EditorToolMode.EFFECTS
+            )
         binding.auxTimelineContainer.visibility = if (showsAuxTimeline) View.VISIBLE else View.GONE
         binding.audioTimeline.visibility = if (mode == EditorToolMode.AUDIO) View.VISIBLE else View.GONE
         binding.overlayTimeline.visibility = if (mode == EditorToolMode.LAYERS) View.VISIBLE else View.GONE
@@ -2260,7 +2270,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val idleColor = ContextCompat.getColor(this, R.color.vedito_text_secondary)
 
         modeButtons.forEach { (buttonMode, button) ->
-            val selected = buttonMode == mode
+            val selected = contextDrawerExpanded && buttonMode == mode
             val color = if (selected) activeColor else idleColor
             button.setBackgroundResource(if (selected) R.drawable.bg_editor_tool_mode_selected else R.drawable.bg_editor_tool_mode)
             button.setTextColor(color)
@@ -2315,17 +2325,10 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             val number = clips.indexOfFirst { it.id == selected.id } + 1
             val asset = assetFor(selected)
             val source = asset?.displayName?.substringBeforeLast('.')?.take(18).orEmpty()
-            val transform = selected.transform
-            val visual = "${(transform.scale * 100f).roundToInt()}% · ${transform.rotationDegrees.roundToInt()}° · ${(transform.opacity * 100f).roundToInt()}%"
-            val timing = when (selected.timing.mode) {
-                ClipPlaybackMode.FREEZE -> "Freeze ${formatDuration(selected.durationMs)}"
-                ClipPlaybackMode.REVERSE -> "Reverse ${formatSpeed(selected.timing.speed)}"
-                ClipPlaybackMode.FORWARD -> formatSpeed(selected.timing.speed)
-            }
             binding.selectionLabel.text = if (source.isBlank()) {
-                "Clip $number · $timing · $visual"
+                "Video $number"
             } else {
-                "Clip $number · $source · $timing · $visual"
+                source
             }
         }
     }
@@ -2344,7 +2347,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun updateAddButton() {
         binding.addClipButton.isEnabled = !addingMedia
         binding.addClipButton.alpha = if (addingMedia) 0.5f else 1f
-        binding.addClipButton.text = if (addingMedia) "Adding…" else "Add video"
+        binding.addClipButton.text = if (addingMedia) "Adding" else "Add"
     }
 
     private fun requestThumbnails() {

@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.3 / versionCode 31**
+- Current patch: **0.28.4 / versionCode 32**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -67,6 +67,13 @@ Current external CI concept:
 - Tool dock height, labels and selected treatment are reduced to recover preview space and remove the heavy outlined/debug-control feel.
 - Mask/tracking labels are user-facing (`Size`, `Point`, arrows) instead of internal shorthand such as `M ←` or `Anchor`.
 - This patch is UI-only: project schema remains v20 and renderer/export/recovery behavior is unchanged.
+
+## Editor density cleanup (Patch 28C.2)
+- Editor opens in a clean preview/timeline/tool-dock state; the context drawer is collapsed by default and opens only when a tool is tapped or a preview object explicitly selects its matching tool. Tapping the active tool again collapses the drawer.
+- The video timeline no longer sits inside a large bordered card. Metadata is reduced to the source/clip name, the scrubber is slimmer, and technical scale/rotation/opacity/speed text is removed from the main editor chrome.
+- Undo/redo move out of the Clip action row into persistent compact transport controls, while Clip actions become icon-first (`Add / Split / Copy / Replace / Delete`).
+- Preview frame, tool dock and context drawer drop unnecessary strokes/rounded containers so separation comes from spacing and surface contrast rather than nested boxes.
+- Contextual auxiliary lanes collapse with their tool drawer; schema/render/export/recovery behavior remains unchanged.
 
 ## Product quality rules
 - Engine correctness before feature count.
@@ -287,6 +294,6 @@ Important modules:
 - Patch 27 does not change render semantics, project JSON or export fingerprint: schema remains v20 and recovery salt remains `vedito-render-p26-r1`.
 
 ## Next milestone
-**Patch 28D — Export UI Overhaul** following the approved mockup direction, unless device testing exposes a Patch 28C regression first.
+**Patch 28D — Export UI Overhaul** following the approved mockup direction, after Patch 28C.2 is green on device.
 
 See `WORKPLAN.md` for the full roadmap.

@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/vedito_surface" />
-    <stroke android:width="1dp" android:color="@color/vedito_stroke_soft" />
-    <corners android:radius="14dp" />
+    <solid android:color="@color/vedito_black" />
 </shape>

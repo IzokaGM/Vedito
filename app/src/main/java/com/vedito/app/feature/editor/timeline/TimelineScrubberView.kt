@@ -54,12 +54,12 @@ class TimelineScrubberView @JvmOverloads constructor(
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = context.getColor(R.color.vedito_bg)
-        strokeWidth = 2f * density
+        strokeWidth = 1.5f * density
     }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = context.getColor(R.color.vedito_video)
         style = Paint.Style.STROKE
-        strokeWidth = 2f * density
+        strokeWidth = 1.5f * density
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_video) }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text) }
@@ -168,7 +168,7 @@ class TimelineScrubberView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val body = timelineRect()
-        val radius = 12f * density
+        val radius = 7f * density
         canvas.drawRoundRect(body, radius, radius, backgroundPaint)
 
         canvas.save()
@@ -473,8 +473,8 @@ class TimelineScrubberView @JvmOverloads constructor(
         timelineIndex.locate(timeForX(x, body))?.clipIndex ?: clips.lastIndex.coerceAtLeast(0)
 
     private fun timelineRect(): RectF {
-        val horizontal = 12f * density
-        val vertical = 16f * density
+        val horizontal = 8f * density
+        val vertical = 9f * density
         return RectF(
             horizontal,
             vertical,

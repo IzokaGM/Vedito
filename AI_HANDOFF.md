@@ -1,8 +1,8 @@
-# AI Handoff — Patch 28C.1
+# AI Handoff — Patch 28C.2
 
-Current version: **0.28.3 / code 31**. Schema remains **v20**.
+Current version: **0.28.4 / code 32**. Schema remains **v20**.
 
-Latest UI correction: Editor Edit mode now has `Clip / Transform / Mask / Track` subtools, compact timeline/tool dock sizing, contextual auxiliary-lane collapse, and clearer user-facing Mask/Track labels. This is deliberately UI-only; do not fork canonical transform/tracking/timing/render logic.
+Latest correction targets device density rather than new engine behavior: the editor now opens with the context drawer collapsed, the main timeline is borderless/slimmer, technical clip metadata is removed from chrome, Undo/Redo are persistent transport actions, and Clip actions are icon-first. Tool drawers open on demand and tapping the active tool collapses them.
 
 Next planned UI milestone after device/CI green: **Patch 28D — Export UI Overhaul**.
 
@@ -14,7 +14,7 @@ Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.28.2 / versionCode 30 / project schema v20**.
+- Current patch: **0.28.4 / versionCode 32 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -38,6 +38,6 @@ Patch 28A locks the Vedito brand direction before the UI overhaul: V + play + cu
 
 Patch 28B rebuilds Home around that design system. The New Project/Assets routes are real picker flows; Draft/Edit open real projects; recent cards render real source-video thumbnails. Templates are preview-only and Profile is explicitly unimplemented. Export still belongs to Editor, so Home routes to the latest project rather than inventing an export-history model.
 
-Patch 28C rebuilds the Editor shell without changing canonical edit/render state. Preview is primary, video timeline is always visible, and Text/Audio/Effects/Overlay/Captions share a contextual auxiliary lane. A fixed tool dock selects one context drawer at a time, replacing the previous full-page button dump. Preview taps on text/overlay/caption reveal the matching tool mode.
+Patch 28C/28C.1/28C.2 rebuild and then tighten the Editor shell without changing canonical edit/render state. Preview is primary, video timeline is always visible, contextual lanes/drawers are on-demand, and the tool dock can collapse the active drawer. Preview taps on text/overlay/caption reveal the matching tool mode. Technical clip metadata and stacked card chrome are intentionally kept out of the default editor view.
 
 Next planned milestone: **Patch 28D — Export UI Overhaul**, unless CI/device testing exposes an Editor regression first.

@@ -10,8 +10,8 @@ android {
         applicationId = "com.vedito.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 31
-        versionName = "0.28.3"
+        versionCode = 32
+        versionName = "0.28.4"
     }
 
     buildFeatures {
