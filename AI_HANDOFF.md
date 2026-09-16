@@ -1,3 +1,13 @@
+# AI Handoff — Patch 28C.1
+
+Current version: **0.28.3 / code 31**. Schema remains **v20**.
+
+Latest UI correction: Editor Edit mode now has `Clip / Transform / Mask / Track` subtools, compact timeline/tool dock sizing, contextual auxiliary-lane collapse, and clearer user-facing Mask/Track labels. This is deliberately UI-only; do not fork canonical transform/tracking/timing/render logic.
+
+Next planned UI milestone after device/CI green: **Patch 28D — Export UI Overhaul**.
+
+---
+
 # Vedito AI Handoff
 
 Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.

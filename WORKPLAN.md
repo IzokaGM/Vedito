@@ -279,3 +279,14 @@ Before locking a major stage:
 - Undo/redo cannot corrupt project state.
 - UI respects system insets/small screens.
 - Feature has a deterministic export path; avoid preview-only state that cannot later render.
+
+
+## Patch 28C.1 — Editor Visual Correction
+- [x] Replace stacked Edit control dump with Clip/Transform/Mask/Track subtools.
+- [x] Default to common clip actions; advanced transform/mask/tracking remain one tap away.
+- [x] Compact video timeline and collapse unused auxiliary timeline space.
+- [x] Reduce tool dock height and heavy selected styling.
+- [x] Replace internal Mask/Tracking shorthand with user-facing labels.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next after green: **Patch 28D — Export UI Overhaul**.

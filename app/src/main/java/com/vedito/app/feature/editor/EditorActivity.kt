@@ -124,6 +124,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         LAYERS,
         CAPTIONS
     }
+    private enum class EditSubtool {
+        CLIP,
+        TRANSFORM,
+        MASK,
+        TRACK
+    }
     private lateinit var binding: ActivityEditorBinding
     private lateinit var repository: ProjectRepository
     private lateinit var previewPlayer: PreviewPlayer
@@ -181,6 +187,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var exportReceiverRegistered = false
     private var lastHandledExportTerminalAt = 0L
     private var editorToolMode = EditorToolMode.EDIT
+    private var editSubtool = EditSubtool.CLIP
 
     private val exportStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -301,6 +308,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.toolColorButton.setOnClickListener { setEditorToolMode(EditorToolMode.COLOR) }
         binding.toolLayersButton.setOnClickListener { setEditorToolMode(EditorToolMode.LAYERS) }
         binding.toolCaptionsButton.setOnClickListener { setEditorToolMode(EditorToolMode.CAPTIONS) }
+        binding.editClipTab.setOnClickListener { setEditSubtool(EditSubtool.CLIP) }
+        binding.editTransformTab.setOnClickListener { setEditSubtool(EditSubtool.TRANSFORM) }
+        binding.editMaskTab.setOnClickListener { setEditSubtool(EditSubtool.MASK) }
+        binding.editTrackTab.setOnClickListener { setEditSubtool(EditSubtool.TRACK) }
+        setEditSubtool(EditSubtool.CLIP)
         setEditorToolMode(EditorToolMode.EDIT)
         binding.playPauseButton.setOnClickListener {
             if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
@@ -2165,6 +2177,28 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
     }
 
+    private fun setEditSubtool(subtool: EditSubtool) {
+        editSubtool = subtool
+        binding.clipToolsRow.visibility = if (subtool == EditSubtool.CLIP) View.VISIBLE else View.GONE
+        binding.visualToolbar.visibility = if (subtool == EditSubtool.TRANSFORM) View.VISIBLE else View.GONE
+        binding.maskChromaToolbar.visibility = if (subtool == EditSubtool.MASK) View.VISIBLE else View.GONE
+        binding.trackingToolbar.visibility = if (subtool == EditSubtool.TRACK) View.VISIBLE else View.GONE
+
+        val tabs = listOf(
+            EditSubtool.CLIP to binding.editClipTab,
+            EditSubtool.TRANSFORM to binding.editTransformTab,
+            EditSubtool.MASK to binding.editMaskTab,
+            EditSubtool.TRACK to binding.editTrackTab
+        )
+        val activeColor = ContextCompat.getColor(this, R.color.vedito_brand_cyan)
+        val idleColor = ContextCompat.getColor(this, R.color.vedito_text_secondary)
+        tabs.forEach { (tabSubtool, tab) ->
+            val selected = tabSubtool == subtool
+            tab.setBackgroundResource(if (selected) R.drawable.bg_editor_subtool_selected else R.drawable.bg_editor_subtool)
+            tab.setTextColor(if (selected) activeColor else idleColor)
+        }
+    }
+
     private fun setEditorToolMode(mode: EditorToolMode) {
         editorToolMode = mode
 
@@ -2192,11 +2226,18 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         activePanel.visibility = View.VISIBLE
 
+        val showsAuxTimeline = mode == EditorToolMode.AUDIO ||
+            mode == EditorToolMode.LAYERS ||
+            mode == EditorToolMode.TEXT ||
+            mode == EditorToolMode.CAPTIONS ||
+            mode == EditorToolMode.EFFECTS
+        binding.auxTimelineContainer.visibility = if (showsAuxTimeline) View.VISIBLE else View.GONE
         binding.audioTimeline.visibility = if (mode == EditorToolMode.AUDIO) View.VISIBLE else View.GONE
         binding.overlayTimeline.visibility = if (mode == EditorToolMode.LAYERS) View.VISIBLE else View.GONE
         binding.textTimeline.visibility = if (mode == EditorToolMode.TEXT) View.VISIBLE else View.GONE
         binding.captionTimeline.visibility = if (mode == EditorToolMode.CAPTIONS) View.VISIBLE else View.GONE
         binding.effectTimeline.visibility = if (mode == EditorToolMode.EFFECTS) View.VISIBLE else View.GONE
+        if (mode == EditorToolMode.EDIT) setEditSubtool(editSubtool)
 
         val modeButtons = listOf(
             EditorToolMode.EDIT to binding.toolEditButton,

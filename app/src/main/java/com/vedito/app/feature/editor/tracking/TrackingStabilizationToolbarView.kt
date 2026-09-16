@@ -42,14 +42,14 @@ class TrackingStabilizationToolbarView @JvmOverloads constructor(
         overScrollMode = OVER_SCROLL_NEVER
         addView(strip, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         add(Action.TRACK_TOGGLE, "Track")
-        add(Action.ADD_ANCHOR, "+ Anchor")
-        add(Action.REMOVE_ANCHOR, "− Anchor")
-        add(Action.PREVIOUS_ANCHOR, "← Point")
-        add(Action.NEXT_ANCHOR, "Point →")
+        add(Action.ADD_ANCHOR, "+ Point")
+        add(Action.REMOVE_ANCHOR, "− Point")
+        add(Action.PREVIOUS_ANCHOR, "‹ Point")
+        add(Action.NEXT_ANCHOR, "Point ›")
         add(Action.STABILIZE_TOGGLE, "Stabilize")
         add(Action.STRENGTH, "Strength")
         add(Action.AUTO_CROP, "Auto crop")
-        add(Action.RESET, "Reset T/S")
+        add(Action.RESET, "Reset")
     }
 
     fun setState(
@@ -69,7 +69,7 @@ class TrackingStabilizationToolbarView @JvmOverloads constructor(
         }
         val count = track.points.size
         buttons[Action.TRACK_TOGGLE]?.text = if (track.enabled) "Track On · $count" else "Track Off · $count"
-        buttons[Action.ADD_ANCHOR]?.text = "+ Anchor ${(localTimeMs / 100) / 10f}s"
+        buttons[Action.ADD_ANCHOR]?.text = "+ Point ${(localTimeMs / 100) / 10f}s"
         buttons[Action.STABILIZE_TOGGLE]?.text = if (stabilization.enabled) "Stabilize On" else "Stabilize Off"
         buttons[Action.STRENGTH]?.text = "Strength ${(stabilization.strength * 100f).roundToInt()}%"
         buttons[Action.AUTO_CROP]?.text = if (stabilization.autoCrop) "Auto crop On" else "Auto crop Off"
@@ -80,15 +80,15 @@ class TrackingStabilizationToolbarView @JvmOverloads constructor(
             text = label
             gravity = Gravity.CENTER
             setTextColor(context.getColor(R.color.vedito_text))
-            textSize = 9f
+            textSize = 8.5f
             setBackgroundResource(R.drawable.bg_tool_button)
             isClickable = true
             isFocusable = true
-            minWidth = dp(70)
-            setPadding(dp(10), 0, dp(10), 0)
+            minWidth = dp(64)
+            setPadding(dp(8), 0, dp(8), 0)
             setOnClickListener { onAction?.invoke(action) }
         }
-        strip.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)).apply {
+        strip.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         })

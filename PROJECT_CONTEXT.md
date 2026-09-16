@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.2 / versionCode 30**
+- Current patch: **0.28.3 / versionCode 31**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -59,6 +59,14 @@ Current external CI concept:
 - Tool modes are UI-only state and do not change project schema, canonical timing, preview math or export behavior.
 - Text/overlay/caption taps in preview automatically reveal the matching tool mode.
 - Semantic accents remain category-owned rather than forcing all editor controls into one brand color.
+
+## Editor visual correction (Patch 28C.1)
+- Edit mode no longer exposes transform, mask/chroma and tracking controls as stacked raw button rows. It now uses a compact `Clip / Transform / Mask / Track` subtool switcher with one row visible at a time.
+- `Clip` is the default edit subtool so common actions (add/split/duplicate/replace/undo/redo/delete) appear first; advanced controls stay available on demand.
+- Timeline height is content-driven: the main video lane is compact, while the auxiliary lane only consumes space for Text/Audio/Effects/Overlay/Captions modes.
+- Tool dock height, labels and selected treatment are reduced to recover preview space and remove the heavy outlined/debug-control feel.
+- Mask/tracking labels are user-facing (`Size`, `Point`, arrows) instead of internal shorthand such as `M ←` or `Anchor`.
+- This patch is UI-only: project schema remains v20 and renderer/export/recovery behavior is unchanged.
 
 ## Product quality rules
 - Engine correctness before feature count.

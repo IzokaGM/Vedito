@@ -61,30 +61,30 @@ class TransformToolbarView @JvmOverloads constructor(
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         addView(strip, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        add(Action.KEYFRAME_TOGGLE, "◇ Add KF")
-        add(Action.KEYFRAME_PREVIOUS, "◀ KF")
-        add(Action.KEYFRAME_NEXT, "KF ▶")
+        add(Action.KEYFRAME_TOGGLE, "◇ Keyframe")
+        add(Action.KEYFRAME_PREVIOUS, "‹ KF")
+        add(Action.KEYFRAME_NEXT, "KF ›")
         add(Action.KEYFRAME_EASING, "Ease")
-        add(Action.KEYFRAME_CLEAR, "Clear KF")
+        add(Action.KEYFRAME_CLEAR, "Clear KFs")
         add(Action.SCALE_DOWN, "Scale −")
         add(Action.SCALE_UP, "Scale +")
         add(Action.MOVE_LEFT, "←")
         add(Action.MOVE_RIGHT, "→")
         add(Action.MOVE_UP, "↑")
         add(Action.MOVE_DOWN, "↓")
-        add(Action.ROTATE_90, "Rotate")
+        add(Action.ROTATE_90, "Rotate 90°")
         add(Action.FLIP_HORIZONTAL, "Flip H")
         add(Action.FLIP_VERTICAL, "Flip V")
         add(Action.OPACITY_CYCLE, "Opacity")
         add(Action.FIT_TOGGLE, "Fit")
-        add(Action.CROP_LEFT, "Crop L")
-        add(Action.CROP_RIGHT, "Crop R")
-        add(Action.CROP_TOP, "Crop T")
-        add(Action.CROP_BOTTOM, "Crop B")
-        add(Action.CROP_RESET, "Crop reset")
+        add(Action.CROP_LEFT, "Crop ←")
+        add(Action.CROP_RIGHT, "Crop →")
+        add(Action.CROP_TOP, "Crop ↑")
+        add(Action.CROP_BOTTOM, "Crop ↓")
+        add(Action.CROP_RESET, "Reset crop")
         add(Action.CANVAS_RATIO, "Canvas")
         add(Action.CANVAS_BACKGROUND, "BG")
-        add(Action.RESET_TRANSFORM, "Reset")
+        add(Action.RESET_TRANSFORM, "Reset all")
     }
 
     fun setState(
@@ -122,7 +122,7 @@ class TransformToolbarView @JvmOverloads constructor(
             buttons[Action.FIT_TOGGLE]?.text = "Fit"
         }
 
-        buttons[Action.KEYFRAME_TOGGLE]?.text = if (atKeyframe) "◆ Remove KF" else "◇ Add KF"
+        buttons[Action.KEYFRAME_TOGGLE]?.text = if (atKeyframe) "◆ Remove" else "◇ Keyframe"
         val easing = keyframes?.let { KeyframeEngine.easingAt(it, localTimeMs) }
         buttons[Action.KEYFRAME_EASING]?.text = when (easing) {
             null -> "Ease"
@@ -137,15 +137,15 @@ class TransformToolbarView @JvmOverloads constructor(
             text = label
             gravity = Gravity.CENTER
             setTextColor(context.getColor(R.color.vedito_text))
-            textSize = 9f
+            textSize = 8.5f
             setBackgroundResource(R.drawable.bg_tool_button)
             isClickable = true
             isFocusable = true
-            minWidth = dp(if (label.length <= 2) 44 else 68)
-            setPadding(dp(10), 0, dp(10), 0)
+            minWidth = dp(if (label.length <= 2) 40 else 64)
+            setPadding(dp(8), 0, dp(8), 0)
             setOnClickListener { onAction?.invoke(action) }
         }
-        val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)).apply {
+        val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply {
             marginStart = dp(2)
             marginEnd = dp(2)
         }
