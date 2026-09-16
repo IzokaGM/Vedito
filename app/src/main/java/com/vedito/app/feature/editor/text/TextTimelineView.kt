@@ -21,6 +21,8 @@ class TextTimelineView @JvmOverloads constructor(
     var onTextSelected: ((String) -> Unit)? = null
     var onTextEditStart: ((String) -> Unit)? = null
     var onTextChanged: ((TextClip, Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text_track) }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_text_selected) }
@@ -92,8 +94,10 @@ class TextTimelineView @JvmOverloads constructor(
             val label = clip.text.replace('\n', ' ').take(18).ifBlank { "Text" }
             canvas.drawText("T${clip.zIndex + 1} $label", x1 + dp(6f), top + laneHeight * 0.55f, textPaint)
         }
-        val px = timeToX(positionMs)
-        if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        if (showPlayhead) {
+            val px = timeToX(positionMs)
+            if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

@@ -21,6 +21,8 @@ class AudioTimelineView @JvmOverloads constructor(
     var onAudioClipSelected: ((String) -> Unit)? = null
     var onAudioEditStart: ((String) -> Unit)? = null
     var onAudioClipEditChanged: ((AudioClip, Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private enum class GestureMode { MOVE, TRIM_LEFT, TRIM_RIGHT }
 
@@ -141,9 +143,11 @@ class AudioTimelineView @JvmOverloads constructor(
             }
         }
 
-        val playheadX = xForTime(positionMs)
-        if (playheadX in 0f..width.toFloat()) {
-            canvas.drawLine(playheadX, 0f, playheadX, height.toFloat(), playheadPaint)
+        if (showPlayhead) {
+            val playheadX = xForTime(positionMs)
+            if (playheadX in 0f..width.toFloat()) {
+                canvas.drawLine(playheadX, 0f, playheadX, height.toFloat(), playheadPaint)
+            }
         }
     }
 

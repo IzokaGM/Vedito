@@ -20,6 +20,8 @@ class EffectTimelineView @JvmOverloads constructor(
     var onEffectSelected: ((String) -> Unit)? = null
     var onEffectEditStart: ((String) -> Unit)? = null
     var onEffectChanged: ((EffectClip, Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_effect) }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_effect_selected) }
@@ -75,8 +77,10 @@ class EffectTimelineView @JvmOverloads constructor(
             }
             canvas.drawText(effect.kind.name.lowercase().replace('_', ' '), x1 + dp(6f), top + laneHeight * 0.55f, textPaint)
         }
-        val px = timeToX(positionMs)
-        if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        if (showPlayhead) {
+            val px = timeToX(positionMs)
+            if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

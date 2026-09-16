@@ -38,6 +38,10 @@ Patch 28A locks the Vedito brand direction before the UI overhaul: V + play + cu
 
 Patch 28B rebuilds Home around that design system. The New Project/Assets routes are real picker flows; Draft/Edit open real projects; recent cards render real source-video thumbnails. Templates are preview-only and Profile is explicitly unimplemented. Export still belongs to Editor, so Home routes to the latest project rather than inventing an export-history model.
 
-Patch 28C/28C.1/28C.2 rebuild and then tighten the Editor shell without changing canonical edit/render state. Preview is primary, video timeline is always visible, contextual lanes/drawers are on-demand, and the tool dock can collapse the active drawer. Preview taps on text/overlay/caption reveal the matching tool mode. Technical clip metadata and stacked card chrome are intentionally kept out of the default editor view.
+Patch 28C/28C.1/28C.2 rebuild and then tighten the Editor shell without changing canonical edit/render state. Preview is primary, the tool dock can collapse the active drawer, and Patch 28C.3 now keeps Video/Audio/Text timeline lanes persistent while Overlay/Captions/Effects lanes appear when content exists. Preview taps on text/overlay/caption reveal the matching tool mode. Technical clip metadata and stacked card chrome are intentionally kept out of the default editor view.
 
 Next planned milestone: **Patch 28D — Export UI Overhaul**, unless CI/device testing exposes an Editor regression first.
+
+
+## Latest UI patch — 28C.3
+Persistent multi-track timeline: Video/Audio/Text always visible; empty Audio/Text lanes launch real add flows; Overlay/Captions/Effects appear with content; ruler and shared playhead sync to the main timeline viewport. Version 0.28.5 / code 33; schema v20 unchanged.

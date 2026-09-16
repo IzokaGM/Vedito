@@ -301,3 +301,14 @@ Next after green: **Patch 28D — Export UI Overhaul**.
 - [ ] GitHub Actions Android build + device screenshot validation.
 
 Next after green: **Patch 28D — Export UI Overhaul**.
+
+
+## Patch 28C.3 — Persistent Multi-Track Timeline
+- [x] Keep Video, Audio and Text lanes visible in the default editor timeline.
+- [x] Empty Audio/Text lanes expose real add actions instead of disappearing.
+- [x] Show Overlay/Captions/Effects lanes automatically when project content exists.
+- [x] Add a compact synchronized ruler and one shared playhead across visible lanes.
+- [x] Keep all secondary lanes synchronized to the main timeline zoom/viewport and canonical edit state.
+- [ ] GitHub Actions Android build + device screenshot validation.
+
+Next after green + visual approval: **Patch 28D — Export UI Overhaul**.

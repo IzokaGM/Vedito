@@ -19,6 +19,8 @@ class CaptionTimelineView @JvmOverloads constructor(
     var onCaptionSelected: ((String) -> Unit)? = null
     var onCaptionEditStart: ((String) -> Unit)? = null
     var onCaptionChanged: ((CaptionSegment, Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF72D6C9.toInt() }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFC8FFF7.toInt() }
@@ -83,8 +85,10 @@ class CaptionTimelineView @JvmOverloads constructor(
             val label = segment.text.replace('\n', ' ').take(20).ifBlank { "Caption" }
             canvas.drawText(label, x1 + dp(6f), top + laneHeight * 0.55f, textPaint)
         }
-        val px = timeToX(positionMs)
-        if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        if (showPlayhead) {
+            val px = timeToX(positionMs)
+            if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

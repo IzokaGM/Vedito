@@ -21,6 +21,8 @@ class OverlayTimelineView @JvmOverloads constructor(
     var onOverlaySelected: ((String) -> Unit)? = null
     var onOverlayEditStart: ((String) -> Unit)? = null
     var onOverlayChanged: ((OverlayClip, Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_video) }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE9E5FF.toInt() }
@@ -90,8 +92,10 @@ class OverlayTimelineView @JvmOverloads constructor(
             val label = labelsById[clip.assetId]?.substringBeforeLast('.')?.take(12).orEmpty().ifBlank { "Overlay" }
             canvas.drawText("L${clip.zIndex + 1} $label", x1 + dp(6f), top + laneHeight * 0.55f, textPaint)
         }
-        val px = timeToX(positionMs)
-        if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        if (showPlayhead) {
+            val px = timeToX(positionMs)
+            if (px in -2f..(width + 2f)) canvas.drawLine(px, 0f, px, height.toFloat(), playheadPaint)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

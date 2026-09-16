@@ -22,4 +22,8 @@ Project persistence schema: **v20**
 Full Android build remains the GitHub Actions gate because the local environment cannot download the Gradle 9.6 distribution. Local checks cover XML parsing, unique/binding IDs, resource references, changed Kotlin structure, patch overlay and ZIP integrity.
 
 ## Next UI milestone
-**Patch 28D — Export UI Overhaul** after this correction is green on device.
+**Patch 28D — Export UI Overhaul** after Patch 28C.3 is green and visually approved on device.
+
+
+### Patch 28C.3 — Persistent Multi-Track Timeline
+The editor now keeps Video, Audio and Text tracks visible together, adds real empty-lane add affordances, dynamically shows Overlay/Captions/Effects tracks when used, and synchronizes all lanes to one ruler/playhead.

@@ -315,6 +315,12 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.editTrackTab.setOnClickListener { setEditSubtool(EditSubtool.TRACK) }
         setEditSubtool(EditSubtool.CLIP)
         setEditorToolMode(EditorToolMode.EDIT, expandDrawer = false)
+        binding.timeline.showPlayhead = false
+        binding.audioTimeline.showPlayhead = false
+        binding.textTimeline.showPlayhead = false
+        binding.overlayTimeline.showPlayhead = false
+        binding.captionTimeline.showPlayhead = false
+        binding.effectTimeline.showPlayhead = false
         binding.playPauseButton.setOnClickListener {
             if (previewPlayer.isPlaying()) previewPlayer.pause() else startPlaybackFromTimeline()
         }
@@ -330,6 +336,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.duplicateButton.setOnClickListener { duplicateSelectedClip() }
         binding.replaceButton.setOnClickListener { launchReplaceSelectedClip() }
         binding.addAudioButton.setOnClickListener { addAudioPicker.launch(arrayOf("audio/*")) }
+        binding.addAudioLaneButton.setOnClickListener { addAudioPicker.launch(arrayOf("audio/*")) }
         binding.audioMuteButton.setOnClickListener { toggleSelectedAudioMute() }
         binding.audioVolumeDownButton.setOnClickListener { adjustSelectedAudioVolume(-0.1f) }
         binding.audioVolumeUpButton.setOnClickListener { adjustSelectedAudioVolume(0.1f) }
@@ -348,6 +355,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         binding.overlayFrontButton.setOnClickListener { changeOverlayLayer(1) }
         binding.overlayDeleteButton.setOnClickListener { deleteSelectedOverlay() }
         binding.addTextButton.setOnClickListener { showTextDialog(null) }
+        binding.addTextLaneButton.setOnClickListener { showTextDialog(null) }
         binding.editTextButton.setOnClickListener { selectedTextClipId?.let { id -> textClips.firstOrNull { it.id == id } }?.let(::showTextDialog) }
         binding.textBackButton.setOnClickListener { changeTextLayer(-1) }
         binding.textFrontButton.setOnClickListener { changeTextLayer(1) }
@@ -375,6 +383,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             if (::overlayPreview.isInitialized) overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
         }
         binding.audioTimeline.onAudioClipSelected = { id ->
+            setEditorToolMode(EditorToolMode.AUDIO)
             selectedAudioClipId = id
             updateAudioUi()
             renderAudioState()
@@ -394,6 +403,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         binding.overlayTimeline.onOverlaySelected = { id ->
+            setEditorToolMode(EditorToolMode.LAYERS)
             selectedOverlayClipId = id
             selectedTextClipId = null
             selectedCaptionSegmentId = null
@@ -424,6 +434,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         binding.textTimeline.onTextSelected = { id ->
+            setEditorToolMode(EditorToolMode.TEXT)
             selectedTextClipId = id
             selectedOverlayClipId = null
             selectedCaptionSegmentId = null
@@ -454,6 +465,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         binding.captionTimeline.onCaptionSelected = { id ->
+            setEditorToolMode(EditorToolMode.CAPTIONS)
             selectedCaptionSegmentId = id
             selectedTextClipId = null
             selectedOverlayClipId = null
@@ -483,6 +495,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
 
         binding.effectTimeline.onEffectSelected = { id ->
+            setEditorToolMode(EditorToolMode.EFFECTS)
             selectedEffectClipId = id
             updateEffectUi()
             renderEffectState()
@@ -554,6 +567,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             renderTextState()
             renderCaptionState()
             renderEffectState()
+            updatePersistentTimelineChrome()
             if (finished) {
                 requestThumbnails()
                 saveProject()
@@ -2148,6 +2162,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         updateMaskChromaToolbar()
         updateTrackingUi()
         updateTimingToolbar()
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun setTimelinePosition(positionMs: Int) {
@@ -2176,6 +2192,7 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             updateVisualToolbar()
             updateMaskChromaToolbar()
         }
+        updatePersistentTimelineChrome()
     }
 
     private fun setEditSubtool(subtool: EditSubtool) {
@@ -2234,19 +2251,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         activePanel.visibility = View.VISIBLE
 
-        val showsAuxTimeline = contextDrawerExpanded && (
-            mode == EditorToolMode.AUDIO ||
-                mode == EditorToolMode.LAYERS ||
-                mode == EditorToolMode.TEXT ||
-                mode == EditorToolMode.CAPTIONS ||
-                mode == EditorToolMode.EFFECTS
-            )
-        binding.auxTimelineContainer.visibility = if (showsAuxTimeline) View.VISIBLE else View.GONE
-        binding.audioTimeline.visibility = if (mode == EditorToolMode.AUDIO) View.VISIBLE else View.GONE
-        binding.overlayTimeline.visibility = if (mode == EditorToolMode.LAYERS) View.VISIBLE else View.GONE
-        binding.textTimeline.visibility = if (mode == EditorToolMode.TEXT) View.VISIBLE else View.GONE
-        binding.captionTimeline.visibility = if (mode == EditorToolMode.CAPTIONS) View.VISIBLE else View.GONE
-        binding.effectTimeline.visibility = if (mode == EditorToolMode.EFFECTS) View.VISIBLE else View.GONE
+        // Timeline lanes are persistent and independent from the context drawer.
+        // Tool mode only controls the lower editing controls, not whether timeline data exists.
+        updatePersistentTimelineLanes()
         if (mode == EditorToolMode.EDIT) setEditSubtool(editSubtool)
 
         val modeButtons = listOf(
@@ -2287,6 +2294,33 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         binding.activeTrackLabel.text = track.first
         binding.activeTrackLabel.setTextColor(ContextCompat.getColor(this, track.second))
+    }
+
+    private fun updatePersistentTimelineLanes() {
+        if (!::binding.isInitialized) return
+        binding.auxTimelineContainer.visibility = View.VISIBLE
+        binding.audioLane.visibility = View.VISIBLE
+        binding.textLane.visibility = View.VISIBLE
+        binding.audioTimeline.visibility = View.VISIBLE
+        binding.textTimeline.visibility = View.VISIBLE
+        binding.addAudioLaneButton.visibility = if (audioClips.isEmpty()) View.VISIBLE else View.GONE
+        binding.addTextLaneButton.visibility = if (textClips.isEmpty()) View.VISIBLE else View.GONE
+
+        binding.overlayLane.visibility = if (overlayClips.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.captionLane.visibility = if (captionSegments.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.effectLane.visibility = if (effectClips.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun updatePersistentTimelineChrome() {
+        if (!::binding.isInitialized) return
+        val duration = timelineIndex.totalDurationMs
+        binding.timelineRuler.setState(duration, timelineZoom, timelineViewportStartMs)
+        binding.timelinePlayheadOverlay.setState(
+            positionMs = timelinePositionMs,
+            durationMs = duration,
+            zoom = timelineZoom,
+            viewportStartMs = timelineViewportStartMs
+        )
     }
 
     private fun updateTimecodeUi() {
@@ -2651,6 +2685,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             viewportStartMs = timelineViewportStartMs,
             positionMs = timelinePositionMs
         )
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun updateAudioUi() {
@@ -2855,6 +2891,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             overlayPreview.setTimeline(overlayAssets, overlayClips)
             overlayPreview.render(timelinePositionMs, previewPlayer.isPlaying(), selectedOverlayClipId)
         }
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun updateOverlayUi() {
@@ -3020,6 +3058,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             textPreview.setTimeline(textClips)
             textPreview.render(timelinePositionMs, selectedTextClipId)
         }
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun updateTextUi() {
@@ -3170,6 +3210,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             captionPreview.setTimeline(captionSegments)
             captionPreview.render(timelinePositionMs, selectedCaptionSegmentId)
         }
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun updateCaptionUi() {
@@ -3467,6 +3509,8 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             positionMs = timelinePositionMs
         )
         renderEffectPreview()
+        updatePersistentTimelineLanes()
+        updatePersistentTimelineChrome()
     }
 
     private fun renderEffectPreview() {

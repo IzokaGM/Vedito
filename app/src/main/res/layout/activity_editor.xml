@@ -46,30 +46,47 @@
         <ImageButton android:id="@+id/undoButton" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="2dp" android:background="@drawable/bg_transport_icon" android:contentDescription="Undo" android:padding="7dp" android:src="@drawable/ic_undo"/><ImageButton android:id="@+id/redoButton" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="2dp" android:background="@drawable/bg_transport_icon" android:contentDescription="Redo" android:padding="7dp" android:src="@drawable/ic_redo"/><TextView android:id="@+id/totalTime" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="monospace" android:gravity="end" android:text="00:00.0" android:textColor="@color/vedito_text_secondary" android:textSize="10sp"/>
     </LinearLayout>
 
-    <LinearLayout android:id="@+id/timelineStage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="0dp" android:layout_marginEnd="0dp" android:background="@android:color/transparent" android:orientation="vertical" android:paddingStart="8dp" android:paddingTop="2dp" android:paddingEnd="8dp" android:paddingBottom="2dp">
+    <LinearLayout android:id="@+id/timelineStage" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@android:color/transparent" android:orientation="vertical" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingBottom="2dp">
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:id="@+id/selectionLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"/>
+        <TextView android:id="@+id/activeTrackLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"/>
+        <TextView android:id="@+id/zoomLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone"/>
 
-            <TextView android:id="@+id/selectionLabel" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:fontFamily="sans-serif-medium" android:maxLines="1" android:text="Clip 1" android:textColor="@color/vedito_text" android:textSize="9sp"/>
+        <FrameLayout android:id="@+id/timelineTracksFrame" android:layout_width="match_parent" android:layout_height="wrap_content">
 
-            <TextView android:id="@+id/activeTrackLabel" android:layout_width="wrap_content" android:layout_height="22dp" android:background="@drawable/bg_track_badge" android:gravity="center" android:minWidth="58dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:text="VIDEO" android:textColor="@color/vedito_video" android:textSize="8sp" android:visibility="gone"/>
+            <LinearLayout android:id="@+id/timelineTracksColumn" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
 
-            <TextView android:id="@+id/zoomLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:fontFamily="sans-serif-medium" android:text="1.0×" android:textColor="@color/vedito_brand_cyan" android:textSize="10sp" android:visibility="gone"/>
-        </LinearLayout>
+                <com.vedito.app.feature.editor.timeline.TimelineRulerView android:id="@+id/timelineRuler" android:layout_width="match_parent" android:layout_height="18dp" android:contentDescription="Timeline ruler"/>
 
-        <com.vedito.app.feature.editor.timeline.TimelineScrubberView android:id="@+id/timeline" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="0dp" android:contentDescription="Video timeline"/>
+                <com.vedito.app.feature.editor.timeline.TimelineScrubberView android:id="@+id/timeline" android:layout_width="match_parent" android:layout_height="52dp" android:contentDescription="Video timeline"/>
 
-        <FrameLayout android:id="@+id/auxTimelineContainer" android:layout_width="match_parent" android:layout_height="30dp" android:layout_marginTop="0dp">
+                <LinearLayout android:id="@+id/auxTimelineContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
 
-            <com.vedito.app.feature.editor.audio.AudioTimelineView android:id="@+id/audioTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Audio timeline" android:visibility="gone"/>
+                    <FrameLayout android:id="@+id/audioLane" android:layout_width="match_parent" android:layout_height="30dp" android:layout_marginTop="1dp" android:background="@drawable/bg_timeline_lane">
+                        <com.vedito.app.feature.editor.audio.AudioTimelineView android:id="@+id/audioTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:contentDescription="Audio timeline"/>
+                        <TextView android:id="@+id/addAudioLaneButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_gravity="start|center_vertical" android:layout_marginStart="18dp" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:text="＋ Add audio" android:textColor="@color/vedito_audio" android:textSize="9sp"/>
+                    </FrameLayout>
 
-            <com.vedito.app.feature.editor.overlay.OverlayTimelineView android:id="@+id/overlayTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Visual overlay timeline" android:visibility="gone"/>
+                    <FrameLayout android:id="@+id/textLane" android:layout_width="match_parent" android:layout_height="30dp" android:layout_marginTop="1dp" android:background="@drawable/bg_timeline_lane">
+                        <com.vedito.app.feature.editor.text.TextTimelineView android:id="@+id/textTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:contentDescription="Text timeline"/>
+                        <TextView android:id="@+id/addTextLaneButton" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_gravity="start|center_vertical" android:layout_marginStart="18dp" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:text="＋ Add text" android:textColor="@color/vedito_text_track" android:textSize="9sp"/>
+                    </FrameLayout>
 
-            <com.vedito.app.feature.editor.text.TextTimelineView android:id="@+id/textTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Text timeline" android:visibility="gone"/>
+                    <FrameLayout android:id="@+id/overlayLane" android:layout_width="match_parent" android:layout_height="28dp" android:layout_marginTop="1dp" android:background="@drawable/bg_timeline_lane" android:visibility="gone">
+                        <com.vedito.app.feature.editor.overlay.OverlayTimelineView android:id="@+id/overlayTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:contentDescription="Visual overlay timeline"/>
+                    </FrameLayout>
 
-            <com.vedito.app.feature.editor.caption.CaptionTimelineView android:id="@+id/captionTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Caption timeline" android:visibility="gone"/>
+                    <FrameLayout android:id="@+id/captionLane" android:layout_width="match_parent" android:layout_height="28dp" android:layout_marginTop="1dp" android:background="@drawable/bg_timeline_lane" android:visibility="gone">
+                        <com.vedito.app.feature.editor.caption.CaptionTimelineView android:id="@+id/captionTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:contentDescription="Caption timeline"/>
+                    </FrameLayout>
 
-            <com.vedito.app.feature.editor.effect.EffectTimelineView android:id="@+id/effectTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="Video effect timeline" android:visibility="gone"/>
+                    <FrameLayout android:id="@+id/effectLane" android:layout_width="match_parent" android:layout_height="28dp" android:layout_marginTop="1dp" android:background="@drawable/bg_timeline_lane" android:visibility="gone">
+                        <com.vedito.app.feature.editor.effect.EffectTimelineView android:id="@+id/effectTimeline" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:contentDescription="Video effect timeline"/>
+                    </FrameLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <com.vedito.app.feature.editor.timeline.SharedTimelinePlayheadView android:id="@+id/timelinePlayheadOverlay" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no"/>
         </FrameLayout>
     </LinearLayout>
 

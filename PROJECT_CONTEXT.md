@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.4 / versionCode 32**
+- Current patch: **0.28.5 / versionCode 33**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -73,7 +73,15 @@ Current external CI concept:
 - The video timeline no longer sits inside a large bordered card. Metadata is reduced to the source/clip name, the scrubber is slimmer, and technical scale/rotation/opacity/speed text is removed from the main editor chrome.
 - Undo/redo move out of the Clip action row into persistent compact transport controls, while Clip actions become icon-first (`Add / Split / Copy / Replace / Delete`).
 - Preview frame, tool dock and context drawer drop unnecessary strokes/rounded containers so separation comes from spacing and surface contrast rather than nested boxes.
-- Contextual auxiliary lanes collapse with their tool drawer; schema/render/export/recovery behavior remains unchanged.
+- The context drawer still collapses with tool selection; **Patch 28C.3 supersedes the old auxiliary-lane collapse behavior** by keeping Video/Audio/Text timeline lanes persistent. Schema/render/export/recovery behavior remains unchanged.
+
+## Persistent multi-track timeline (Patch 28C.3)
+- The editor timeline is now structurally multi-track rather than showing only the main video lane. **Video + Audio + Text are persistent lanes** in the default editor chrome.
+- Empty Audio/Text lanes remain useful affordances (`+ Add audio`, `+ Add text`) and invoke the real existing add flows; they are not decorative placeholders.
+- Overlay, Captions and Effects lanes appear automatically when their canonical project collections contain content.
+- A compact synced time ruler and one shared visual playhead span every visible lane. Individual lane playheads are suppressed so the stacked tracks read as one timeline.
+- Timeline zoom/viewport remain owned by the main `TimelineScrubberView`; every secondary lane, ruler and shared playhead consume the same zoom/start state.
+- Selecting an Audio/Text/Overlay/Caption/Effect block opens its matching context tool while preserving the canonical project model and edit behavior. Schema remains v20; renderer/export/recovery semantics are unchanged.
 
 ## Product quality rules
 - Engine correctness before feature count.

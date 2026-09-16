@@ -47,6 +47,8 @@ class TimelineScrubberView @JvmOverloads constructor(
     var onTrimChanged: ((clipId: String, sourceStartMs: Int, sourceEndMs: Int, finished: Boolean) -> Unit)? = null
     var onReorderRequested: ((clipId: String, targetIndex: Int, finished: Boolean) -> Unit)? = null
     var onViewportChanged: ((zoom: Float, startMs: Int, finished: Boolean) -> Unit)? = null
+    var showPlayhead: Boolean = true
+        set(value) { field = value; invalidate() }
 
     private val density = resources.displayMetrics.density
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.vedito_surface_raised) }
@@ -184,10 +186,12 @@ class TimelineScrubberView @JvmOverloads constructor(
                 val sx = xForTime(snapped, body)
                 canvas.drawLine(sx, body.top, sx, body.bottom, snapPaint)
             }
-            val x = xForTime(positionMs, body)
-            if (x >= body.left - density && x <= body.right + density) {
-                canvas.drawRect(x - density, body.top - 8f * density, x + density, body.bottom + 8f * density, playheadPaint)
-                canvas.drawCircle(x, body.top - 8f * density, 4.5f * density, handlePaint)
+            if (showPlayhead) {
+                val x = xForTime(positionMs, body)
+                if (x >= body.left - density && x <= body.right + density) {
+                    canvas.drawRect(x - density, body.top - 8f * density, x + density, body.bottom + 8f * density, playheadPaint)
+                    canvas.drawCircle(x, body.top - 8f * density, 4.5f * density, handlePaint)
+                }
             }
         }
     }
