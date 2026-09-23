@@ -344,3 +344,8 @@ Next only after visual approval: **Patch 28D — Export UI Overhaul**.
 - [ ] GitHub Actions Android build + device screenshot validation.
 
 Next only after visual approval: **Patch 28D — Export UI Overhaul**.
+
+## Patch 28D — Export UI Overhaul (0.28.9 / code 37)
+- Done: branded export settings sheet, real supported options, canonical planner estimate, capability+recovery review, progress ring from persisted foreground task status, explicit background/cancel actions, and Progress re-entry affordance.
+- Not added: manual video bitrate slider (planner/device selects bitrate), AAC 320 kbps (current model caps at 256 kbps), speculative ETA, fake stages or export history.
+- No changes to renderer, editor timeline, schema v20, render salt or CI workflow. Verify GitHub Actions build + real-device screen heights/foreground export before declaring 28D locked. Editor visual alignment revisited later per owner.

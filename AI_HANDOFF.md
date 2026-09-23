@@ -1,6 +1,12 @@
-# AI Handoff — Patch 28C.3.3
+# Latest handoff — Export UI 28D (0.28.9 / code 37)
 
-Current version: **0.28.8 / code 36**. Schema remains **v20**.
+Apply Patch 28D over the owner’s green Patch 28C.3.3 repo. `EditorActivity.showExportOptions()` now opens a branded export settings sheet, device/recovery review, then the existing document picker + `ExportForegroundService`. Progress ring reads the real `ExportTaskStore` snapshot; Background only dismisses UI; Cancel invokes the existing service action. While active, the editor Export button reads **Progress** and reopens the panel after background dismissal. Do not auto-reopen it on every status broadcast. ETA is explicitly unavailable until an actual reliable estimation source exists; do not fake one. Bitrate is derived by the planner/device selection, not an interactive setting; AAC options are 96/128/192/256 kbps. UI-only: project schema v20 and render recovery salt `vedito-render-p26-r1` unchanged. Brand and parked editor visual work remain unchanged. Full Android build must run in GitHub Actions; this workspace lacks the complete 25–27 source baseline and offline Gradle 9.6 distribution.
+
+---
+
+# AI Handoff — Patch 28D
+
+Current version: **0.28.9 / code 37**. Schema remains **v20**.
 
 Latest correction targets device density rather than new engine behavior: the editor now opens with the context drawer collapsed, the main timeline is borderless/slimmer, technical clip metadata is removed from chrome, Undo/Redo are persistent transport actions, and Clip actions are icon-first. Tool drawers open on demand and tapping the active tool collapses them.
 
@@ -14,7 +20,7 @@ Read `PROJECT_CONTEXT.md` first, then `BRAND.md`, then `WORKPLAN.md`.
 
 Current locked state:
 - Vedito native Android/Kotlin, package `com.vedito.app`.
-- Current patch: **0.28.8 / versionCode 36 / project schema v20**.
+- Current patch: **0.28.9 / versionCode 37 / project schema v20**.
 - Do not copy Cutrim source; it was only a standalone-APK/build-style reference.
 - Do not reintroduce React Native/Metro.
 - Patch ZIPs use repo-root paths and **must not contain `.yml/.yaml`**.
@@ -40,7 +46,7 @@ Patch 28B rebuilds Home around that design system. The New Project/Assets routes
 
 Patch 28C/28C.1/28C.2 rebuild and then tighten the Editor shell without changing canonical edit/render state. Preview is primary, the tool dock can collapse the active drawer, and Patch 28C.3 now keeps Video/Audio/Text timeline lanes persistent while Overlay/Captions/Effects lanes appear when content exists. Preview taps on text/overlay/caption reveal the matching tool mode. Technical clip metadata and stacked card chrome are intentionally kept out of the default editor view.
 
-Next planned milestone: **Patch 28D — Export UI Overhaul**, unless CI/device testing exposes an Editor regression first.
+Latest milestone: **Patch 28D — Export UI Overhaul**; Editor visual polish is parked for later review at owner request.
 
 
 ## Latest UI patch — 28C.3.3

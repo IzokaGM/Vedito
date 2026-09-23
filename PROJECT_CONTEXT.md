@@ -9,7 +9,7 @@ Vedito is a premium native Android video editor targeting CapCut-class breadth, 
 - Brand/app: **Vedito**
 - Android package/applicationId: **`com.vedito.app`**
 - Android first
-- Current patch: **0.28.8 / versionCode 36**
+- Current patch: **0.28.9 / versionCode 37**
 - Approved logo direction: **V + play + cut-frame** mark, paired with the `Vedito` wordmark.
 - Approved tagline: **Shape the cut.**
 - Visual direction: premium dark base with bright **functional multi-accent** color; do not reduce the product to a single violet/purple brand color.
@@ -323,6 +323,13 @@ Important modules:
 - Patch 27 does not change render semantics, project JSON or export fingerprint: schema remains v20 and recovery salt remains `vedito-render-p26-r1`.
 
 ## Next milestone
-**Patch 28D — Export UI Overhaul** following the approved mockup direction, only after Patch 28C.3.3 is visually approved on device.
+**Patch 28D — Export UI Overhaul** implemented after owner explicitly parked Editor UI rework; revisit Editor visual density later with screenshots and regression testing.
 
 See `WORKPLAN.md` for the full roadmap.
+
+## Patch 28D export UI behavior/limits
+- Export settings, preflight review and foreground progress use branded scrollable sheets. Resolution, 24/30/60 FPS, AVC/HEVC and supported AAC 96/128/192/256 kbps are selectable and are passed to the existing `ExportSettings`/planner/service.
+- Planner bitrate and file size are displayed as estimates; the review shows encoder-effective bitrate and actual device/recovery preflight result. Do not advertise direct bitrate control or 320 kbps AAC without engine support.
+- Progress ring, elapsed time and stage text read real `ExportTaskStore` snapshots; ETA is explicitly unavailable rather than fabricated. Background dismisses only the sheet. Cancel invokes `ExportForegroundService.cancel`, preserves existing checkpoint semantics and hides the sheet until terminal/reopen.
+- Active Export toolbar action becomes Progress and can reopen the sheet; terminal success/failure/recovery/cancel branches stay intact. Render engine, schema (v20), and `vedito-render-p26-r1` are untouched.
+- Android full build must pass the owner's GitHub Actions gate. Editor UI still requires later device-level visual review; no changes to its preview/timeline/dock in 28D.

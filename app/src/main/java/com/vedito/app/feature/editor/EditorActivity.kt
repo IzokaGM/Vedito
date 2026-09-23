@@ -12,11 +12,12 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.WindowManager
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -96,6 +97,7 @@ import com.vedito.app.feature.export.ExportCapabilityProbe
 import com.vedito.app.feature.export.ExportForegroundService
 import com.vedito.app.feature.export.ExportTaskStore
 import com.vedito.app.feature.export.VideoExportEngine
+import com.vedito.app.feature.export.ui.ExportProgressRingView
 import com.vedito.app.feature.editor.caption.CaptionPreviewController
 import com.vedito.app.feature.editor.color.ColorGradeToolbarView
 import com.vedito.app.feature.editor.caption.CaptionToolbarView
@@ -182,8 +184,11 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private var addingOverlay = false
     private var pendingExportSettings: ExportSettings? = null
     private var exportDialog: AlertDialog? = null
-    private var exportProgressBar: ProgressBar? = null
     private var exportProgressLabel: TextView? = null
+    private var exportProgressPercent: TextView? = null
+    private var exportProgressElapsed: TextView? = null
+    private var exportProgressRing: ExportProgressRingView? = null
+    private var exportProgressHiddenByUser = false
     private var exportReceiverRegistered = false
     private var lastHandledExportTerminalAt = 0L
     private var editorToolMode = EditorToolMode.EDIT
@@ -3593,7 +3598,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         val activeExport = if (::exportTaskStore.isInitialized) exportTaskStore.read() else null
         if (activeExport?.state?.isActive == true) {
             if (activeExport.projectId == project.id) {
+                exportProgressHiddenByUser = false
                 showExportProgressDialog(activeExport.progress, activeExport.message)
+                updateExportProgress(activeExport.progress, activeExport.message, activeExport.elapsedMs)
             } else {
                 Toast.makeText(this, "Another Vedito export is already running", Toast.LENGTH_LONG).show()
             }
@@ -3604,40 +3611,77 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
             Toast.makeText(this, "Add a video clip before exporting", Toast.LENGTH_SHORT).show()
             return
         }
-        showExportResolutionOptions()
+        showExportSettingsDialog()
     }
 
-    private fun showExportResolutionOptions() {
-        val presets = ExportPreset.values()
-        AlertDialog.Builder(this)
-            .setTitle("Export resolution")
-            .setItems(presets.map { it.label }.toTypedArray()) { _, which ->
-                showExportFrameRateOptions(presets[which])
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
+    /** Only the supported settings are selectable; bitrate is the planner's read-only result. */
+    private fun showExportSettingsDialog(initial: ExportSettings = ExportSettings()) {
+        var settings = initial
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_export_settings, null)
+        val title = view.findViewById<TextView>(R.id.exportProjectTitle)
+        val meta = view.findViewById<TextView>(R.id.exportProjectMeta)
+        val resolution = view.findViewById<TextView>(R.id.exportPresetValue)
+        val fps = view.findViewById<TextView>(R.id.exportFpsValue)
+        val codec = view.findViewById<TextView>(R.id.exportCodecValue)
+        val audio = view.findViewById<TextView>(R.id.exportAudioValue)
+        val dimensions = view.findViewById<TextView>(R.id.exportDimensionsValue)
+        val bitrate = view.findViewById<TextView>(R.id.exportBitrateValue)
+        val size = view.findViewById<TextView>(R.id.exportSizeValue)
 
-    private fun showExportFrameRateOptions(preset: ExportPreset) {
-        val frameRates = intArrayOf(24, 30, 60)
-        AlertDialog.Builder(this)
-            .setTitle("${preset.label} frame rate")
-            .setItems(frameRates.map { "$it fps" }.toTypedArray()) { _, which ->
-                showExportCodecOptions(preset, frameRates[which])
+        title.text = project.title.ifBlank { "Untitled project" }
+        meta.text = "${formatDuration(timelineIndex.totalDurationMs)}  ·  ${clips.size} video clip(s)"
+        fun refresh() {
+            val plan = ExportPlanner.plan(project, settings)
+            resolution.text = settings.preset.label
+            fps.text = "${settings.frameRate} FPS"
+            codec.text = settings.videoCodec.label.substringBefore('·').trim()
+            audio.text = "${settings.audioBitrate / 1_000} kbps"
+            dimensions.text = "${plan.width} × ${plan.height}  ·  ${plan.frameRate} FPS"
+            bitrate.text = "Video ${formatExportMbps(plan.videoBitrate)} Mbps  ·  AAC ${plan.audioBitrate / 1_000} kbps"
+            size.text = "Estimated file size  ~${formatExportBytes(plan.estimatedOutputBytes)}"
+        }
+        fun choose(titleText: String, labels: Array<String>, checked: Int, onChoose: (Int) -> Unit) {
+            AlertDialog.Builder(this)
+                .setTitle(titleText)
+                .setSingleChoiceItems(labels, checked) { menu, index ->
+                    menu.dismiss()
+                    onChoose(index)
+                    refresh()
+                }
+                .setNegativeButton("Back", null)
+                .show()
+        }
+        view.findViewById<View>(R.id.exportPresetRow).setOnClickListener {
+            val choices = ExportPreset.values()
+            choose("Resolution", choices.map { it.label }.toTypedArray(), choices.indexOf(settings.preset)) {
+                settings = settings.copy(preset = choices[it])
             }
-            .setNegativeButton("Back") { _, _ -> showExportResolutionOptions() }
-            .show()
-    }
-
-    private fun showExportCodecOptions(preset: ExportPreset, frameRate: Int) {
-        val codecs = ExportVideoCodec.values()
-        AlertDialog.Builder(this)
-            .setTitle("Video codec")
-            .setItems(codecs.map { it.label }.toTypedArray()) { _, which ->
-                showExportPreflight(ExportSettings(preset = preset, frameRate = frameRate, videoCodec = codecs[which]))
+        }
+        view.findViewById<View>(R.id.exportFpsRow).setOnClickListener {
+            val choices = intArrayOf(24, 30, 60)
+            choose("Frame rate", choices.map { "$it FPS" }.toTypedArray(), choices.indexOf(settings.frameRate)) {
+                settings = settings.copy(frameRate = choices[it])
             }
-            .setNegativeButton("Back") { _, _ -> showExportFrameRateOptions(preset) }
-            .show()
+        }
+        view.findViewById<View>(R.id.exportCodecRow).setOnClickListener {
+            val choices = ExportVideoCodec.values()
+            choose("Video codec", choices.map { it.label }.toTypedArray(), choices.indexOf(settings.videoCodec)) {
+                settings = settings.copy(videoCodec = choices[it])
+            }
+        }
+        view.findViewById<View>(R.id.exportAudioRow).setOnClickListener {
+            val choices = intArrayOf(96_000, 128_000, 192_000, 256_000)
+            choose("AAC audio quality", choices.map { "${it / 1_000} kbps" }.toTypedArray(), choices.indexOf(settings.audioBitrate)) {
+                settings = settings.copy(audioBitrate = choices[it])
+            }
+        }
+        refresh()
+        val dialog = showExportBrandedDialog(view)
+        view.findViewById<View>(R.id.exportClose).setOnClickListener { dialog.dismiss() }
+        view.findViewById<View>(R.id.exportContinue).setOnClickListener {
+            dialog.dismiss()
+            showExportPreflight(settings)
+        }
     }
 
     private fun showExportPreflight(settings: ExportSettings) {
@@ -3650,45 +3694,70 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         )
         val recovery = exportEngine.inspectRecovery(project, settings)
         val warnings = support.warnings + device.warnings + recovery.warnings
-        val message = buildString {
-            append("${effectivePlan.width}×${effectivePlan.height} · ${effectivePlan.frameRate} fps\n")
-            append("${effectivePlan.videoCodec.label}\n")
-            append("Video ${formatExportMbps(effectivePlan.videoBitrate)} Mbps · AAC ${effectivePlan.audioBitrate / 1_000} kbps\n")
-            append("Estimated file ${formatExportBytes(effectivePlan.estimatedOutputBytes)}\n")
-            append("Recovery working budget ~${formatExportBytes(recovery.requiredCacheBytes)}")
-            if (recovery.completedSegments > 0) {
-                append("\nResume ready: ${recovery.completedSegments}/${recovery.totalSegments} video segment(s)")
-                append(" · extra free ~${formatExportBytes(recovery.requiredAdditionalCacheBytes)}")
+        val canStart = support.canExport && device.canEncode && recovery.canStart
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_export_review, null)
+        view.findViewById<TextView>(R.id.exportReviewProfile).text =
+            "${effectivePlan.width} × ${effectivePlan.height}  ·  ${effectivePlan.frameRate} FPS"
+        view.findViewById<TextView>(R.id.exportReviewDetails).text =
+            "${effectivePlan.videoCodec.label}\n" +
+                "Video ${formatExportMbps(effectivePlan.videoBitrate)} Mbps  ·  AAC ${effectivePlan.audioBitrate / 1_000} kbps\n" +
+                "Estimated file ~${formatExportBytes(effectivePlan.estimatedOutputBytes)}"
+        view.findViewById<TextView>(R.id.exportReviewBudget).text =
+            "Recovery working budget ~${formatExportBytes(recovery.requiredCacheBytes)}" +
+                if (recovery.completedSegments > 0)
+                    "\nResume ready: ${recovery.completedSegments}/${recovery.totalSegments} segments" +
+                        "  ·  extra free ~${formatExportBytes(recovery.requiredAdditionalCacheBytes)}"
+                else ""
+        val failure = when {
+            !support.canExport -> "This project cannot be exported with these settings."
+            !device.canEncode -> device.failureReason ?: "No compatible encoder was found."
+            !recovery.canStart -> recovery.failureReason ?: "Local export preflight failed."
+            else -> null
+        }
+        view.findViewById<TextView>(R.id.exportReviewStatus).apply {
+            text = if (canStart) "✓  Ready to save" else "Export is not available for this profile"
+            setTextColor(getColor(if (canStart) R.color.vedito_success else R.color.vedito_error))
+        }
+        view.findViewById<TextView>(R.id.exportReviewNotes).apply {
+            val notes = buildList {
+                if (failure != null) add(failure)
+                device.selection?.let { add("Encoder: ${it.codecName}" + if (it.hardwareAccelerated) " · hardware" else " · software") }
+                addAll(warnings)
             }
-            device.selection?.let { selection ->
-                append("\nEncoder: ${selection.codecName}")
-                append(if (selection.hardwareAccelerated) " · hardware" else " · software")
-            }
-            if (!device.canEncode) {
-                append("\n\nCannot export this profile on this device.\n")
-                append(device.failureReason ?: "No compatible encoder was found.")
-            } else if (!recovery.canStart) {
-                append("\n\nCannot start recovery export.\n")
-                append(recovery.failureReason ?: "Local export preflight failed.")
-            }
-            if (warnings.isNotEmpty()) {
-                append("\n\nPreflight notes:\n")
-                append(warnings.joinToString("\n") { "• $it" })
+            text = notes.joinToString("\n") { "• $it" }
+            visibility = if (notes.isEmpty()) View.GONE else View.VISIBLE
+        }
+        val dialog = showExportBrandedDialog(view)
+        view.findViewById<View>(R.id.exportReviewBack).setOnClickListener {
+            dialog.dismiss()
+            showExportSettingsDialog(settings)
+        }
+        view.findViewById<TextView>(R.id.exportReviewSave).apply {
+            visibility = if (canStart) View.VISIBLE else View.GONE
+            setOnClickListener {
+                dialog.dismiss()
+                launchVideoExportDocument(settings)
             }
         }
+    }
 
-        val builder = AlertDialog.Builder(this)
-            .setTitle("Export preflight")
-            .setMessage(message)
-            .setNegativeButton("Cancel", null)
-        if (support.canExport && device.canEncode && recovery.canStart) {
-            builder
-                .setNeutralButton("Change") { _, _ -> showExportOptions() }
-                .setPositiveButton("Save MP4") { _, _ -> launchVideoExportDocument(settings) }
-        } else {
-            builder.setPositiveButton("Change settings") { _, _ -> showExportOptions() }
+    private fun showExportBrandedDialog(view: View): AlertDialog {
+        val dialog = AlertDialog.Builder(this).setView(view).create()
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            val width = minOf(resources.displayMetrics.widthPixels - (24f * resources.displayMetrics.density).roundToInt(),
+                (440f * resources.displayMetrics.density).roundToInt())
+            setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
         }
-        builder.show()
+        // A short phone can scroll the whole sheet; never obscure action rows off-screen.
+        view.post {
+            val maxHeight = (resources.displayMetrics.heightPixels * 0.88f).roundToInt()
+            if (view.height > maxHeight) {
+                view.layoutParams = view.layoutParams.apply { height = maxHeight }
+            }
+        }
+        return dialog
     }
 
     private fun formatExportMbps(bitrate: Int): String {
@@ -3738,8 +3807,9 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
         }
         if (started.isSuccess) {
             showExportProgressDialog(0, "Preparing foreground export")
-            binding.exportVideoButton.isEnabled = false
-            binding.exportVideoButton.alpha = 0.45f
+            binding.exportVideoButton.isEnabled = true
+            binding.exportVideoButton.alpha = 1f
+            binding.exportVideoButton.text = "Progress"
         } else {
             val message = started.exceptionOrNull()?.message ?: "Unable to start foreground export"
             exportTaskStore.read()?.let { current ->
@@ -3757,37 +3827,45 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     }
 
     private fun showExportProgressDialog(initialProgress: Int = 0, initialMessage: String = "Preparing foreground export") {
+        exportProgressHiddenByUser = false
         exportDialog?.dismiss()
-        val density = resources.displayMetrics.density
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val horizontal = (22f * density).roundToInt()
-            val vertical = (14f * density).roundToInt()
-            setPadding(horizontal, vertical, horizontal, vertical)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_export_progress, null)
+        exportProgressRing = view.findViewById(R.id.exportProgressRing)
+        exportProgressPercent = view.findViewById(R.id.exportProgressPercent)
+        exportProgressLabel = view.findViewById(R.id.exportProgressStage)
+        exportProgressElapsed = view.findViewById(R.id.exportProgressElapsed)
+        val dialog = showExportBrandedDialog(view)
+        dialog.setCancelable(false)
+        exportDialog = dialog
+        updateExportProgress(initialProgress, initialMessage, 0L)
+        view.findViewById<View>(R.id.exportProgressBackground).setOnClickListener {
+            exportProgressHiddenByUser = true
+            dialog.dismiss()
+            exportDialog = null
+            exportProgressRing = null
+            exportProgressPercent = null
+            exportProgressLabel = null
+            exportProgressElapsed = null
         }
-        val label = TextView(this).apply {
-            text = "$initialMessage · ${initialProgress.coerceIn(0, 100)}%"
-            setTextColor(getColor(R.color.vedito_text))
-            textSize = 13f
+        view.findViewById<View>(R.id.exportProgressCancel).setOnClickListener {
+            exportProgressHiddenByUser = true
+            dialog.dismiss()
+            exportDialog = null
+            exportProgressRing = null
+            exportProgressPercent = null
+            exportProgressLabel = null
+            exportProgressElapsed = null
+            ExportForegroundService.cancel(this)
+            Toast.makeText(this, "Cancelling export…", Toast.LENGTH_SHORT).show()
         }
-        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progress = initialProgress.coerceIn(0, 100)
-            isIndeterminate = false
-        }
-        content.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        content.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (10f * density).roundToInt()).apply {
-            topMargin = (12f * density).roundToInt()
-        })
-        exportProgressLabel = label
-        exportProgressBar = progress
-        exportDialog = AlertDialog.Builder(this)
-            .setTitle("Exporting Vedito project")
-            .setView(content)
-            .setCancelable(false)
-            .setNegativeButton("Cancel") { _, _ -> ExportForegroundService.cancel(this) }
-            .create()
-            .also { it.show() }
+    }
+
+    private fun updateExportProgress(progress: Int, message: String, elapsedMs: Long) {
+        val percent = progress.coerceIn(0, 100)
+        exportProgressRing?.progressPercent = percent
+        exportProgressPercent?.text = "$percent%"
+        exportProgressLabel?.text = message.ifBlank { "Rendering video" }
+        exportProgressElapsed?.text = "Elapsed ${formatDuration(elapsedMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())}  ·  ETA unavailable"
     }
 
     private fun syncExportUiFromStore() {
@@ -3800,13 +3878,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
 
         when {
             snapshot.state.isActive -> {
-                binding.exportVideoButton.isEnabled = false
-                binding.exportVideoButton.alpha = 0.45f
-                if (exportDialog == null) {
+                binding.exportVideoButton.isEnabled = true
+                binding.exportVideoButton.alpha = 1f
+                binding.exportVideoButton.text = "Progress"
+                if (!exportProgressHiddenByUser && exportDialog == null) {
                     showExportProgressDialog(snapshot.progress, snapshot.message)
-                } else {
-                    exportProgressBar?.progress = snapshot.progress
-                    exportProgressLabel?.text = "${snapshot.message} · ${snapshot.progress}%"
+                }
+                if (exportDialog != null) {
+                    updateExportProgress(snapshot.progress, snapshot.message, snapshot.elapsedMs)
                 }
             }
             snapshot.state.isTerminal -> {
@@ -3857,10 +3936,14 @@ class EditorActivity : ComponentActivity(), PreviewPlayer.Listener {
     private fun finishExportUi() {
         exportDialog?.dismiss()
         exportDialog = null
-        exportProgressBar = null
         exportProgressLabel = null
+        exportProgressPercent = null
+        exportProgressElapsed = null
+        exportProgressRing = null
+        exportProgressHiddenByUser = false
         binding.exportVideoButton.isEnabled = true
         binding.exportVideoButton.alpha = 1f
+        binding.exportVideoButton.text = "Export"
         binding.root.keepScreenOn = false
     }
 
