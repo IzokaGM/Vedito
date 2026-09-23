@@ -1,3 +1,14 @@
+# Patch 28D.1 — Foreground export runtime fix
+
+Version **0.28.10 / code 38**; project schema **v20**; recovery salt **`vedito-render-p26-r1`** unchanged.
+
+- Root cause on targetSdk 37: `ServiceCompat.startForeground()` from AndroidX Core 1.16 filters the Android 15 `mediaProcessing` FGS type, causing the platform to reject the resulting `none` type. `ExportForegroundService` now calls the platform `Service.startForeground(id, notification, type)` directly on API 29+ (`mediaProcessing` API 35+, `dataSync` API 29–34), with the 2-argument overload on API 26–28.
+- Foreground promotion now occurs before the project repository lookup, not after. Failure marks the matching active export task as failed without starting the codec engine; the existing cancel, timeout, checkpoint resume, progress notification and UI connections remain in place.
+- The existing manifest already declares both types and their permissions; there is no permission or workflow change. Existing export UI and editor layout are not modified.
+- GitHub Actions Android build and device export on Android 15+ are still required runtime gates; static checks alone cannot prove that an export finishes on a device.
+
+---
+
 # Vedito — Master Workplan
 
 ## North-star

@@ -12,7 +12,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.vedito.app.R
 import com.vedito.app.core.export.ExportPlan
@@ -83,24 +82,46 @@ class ExportForegroundService : Service() {
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID)?.takeIf { it.isNotBlank() }
         val output = intent.getStringExtra(EXTRA_OUTPUT_URI)?.takeIf { it.isNotBlank() }?.let(Uri::parse)
         val settings = settingsFrom(intent)
+
+        // Android requires a newly started FGS to promote promptly. Do this before reading a
+        // potentially large project or running any codec preflight, including on intent redelivery.
+        val pending = taskStore.read()
+        try {
+            startForegroundCompat(buildNotification(pending, "Preparing video export", pending?.progress ?: 0, false))
+        } catch (t: Throwable) {
+            pending?.takeIf { it.taskId == taskId && it.state.isActive }?.let {
+                taskStore.finishFailure(taskId, t.message ?: "Android refused to start foreground media export")
+            }
+            broadcastStatus()
+            stopSelf()
+            return
+        }
+
         if (projectId == null || output == null || settings == null) {
-            startForegroundCompat(buildNotification(null, "Export request is incomplete", 0, true))
-            taskStore.read()?.let { taskStore.finishFailure(it.taskId, "Export request is incomplete") }
+            pending?.takeIf { it.taskId == taskId && it.state.isActive }?.let {
+                taskStore.finishFailure(taskId, "Export request is incomplete")
+            }
             broadcastStatus()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
         }
-        val project = ProjectRepository(this).find(projectId)
+        val project = try {
+            ProjectRepository(this).find(projectId)
+        } catch (t: Throwable) {
+            val snapshot = taskStore.finishFailure(taskId, "Unable to reopen project: ${t.message ?: "unknown error"}")
+            broadcastStatus()
+            notifyTerminal(snapshot)
+            finishService(removeNotification = false)
+            return
+        }
         if (project == null) {
-            startForegroundCompat(buildNotification(null, "Project could not be reopened", 0, true))
             val title = intent.getStringExtra(EXTRA_PROJECT_TITLE).orEmpty().ifBlank { "Vedito project" }
             taskStore.begin(taskId, projectId, title, output, settings)
             val snapshot = taskStore.finishFailure(taskId, "Project could not be reopened for export")
             broadcastStatus()
             notifyTerminal(snapshot)
-            stopForeground(STOP_FOREGROUND_DETACH)
-            stopSelf()
+            finishService(removeNotification = false)
             return
         }
 
@@ -113,18 +134,7 @@ class ExportForegroundService : Service() {
         } else {
             taskStore.begin(taskId, projectId, project.title, output, settings)
         }
-        try {
-            startForegroundCompat(buildNotification(snapshot, snapshot.message, snapshot.progress, false))
-        } catch (t: Throwable) {
-            val failed = taskStore.finishFailure(
-                taskId,
-                t.message ?: "Android refused to promote this media export to a foreground service"
-            )
-            broadcastStatus()
-            runCatching { notifyTerminal(failed) }
-            stopSelf()
-            return
-        }
+        updateForeground(snapshot)
         broadcastStatus()
 
         val started = exportEngine.export(project, output, settings, object : VideoExportEngine.Listener {
@@ -203,12 +213,22 @@ class ExportForegroundService : Service() {
     }
 
     private fun startForegroundCompat(notification: Notification) {
-        val type = when {
-            Build.VERSION.SDK_INT >= 35 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
-            Build.VERSION.SDK_INT >= 29 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            else -> 0
+        // AndroidX Core 1.16 ServiceCompat masks out the Android 15 mediaProcessing bit (0x2000)
+        // and forwards type NONE; targetSdk 37 rejects that at runtime. Use the platform API so
+        // the requested type is passed intact, while retaining the old-Android 2-arg overload.
+        when {
+            Build.VERSION.SDK_INT >= 35 -> startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+            )
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+            else -> startForeground(NOTIFICATION_ID, notification)
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
     }
 
     private fun updateForeground(snapshot: ExportTaskStore.Snapshot?) {
